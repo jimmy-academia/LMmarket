@@ -38,11 +38,12 @@
 
 ### Stage 3: Adapt and implement baselines:
 8. Work on Heuristic methods
-8. Work on LLM-ETL methods
-9. Work on Dense retrieval methods
-10. Work on Generative retrieval methods
-11. Work on Recommendation methods -- basic
-12. Work no Conversational Recommendation methods!
+9. Work on LLM-ETL methods
+10. Work on Dense retrieval methods
+11. Work on Generative retrieval methods
+12. Work on Recommendation methods
+    - basic recommendation
+    - conversational recommendation!
 
 
 ------
