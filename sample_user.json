@@ -1,0 +1,524 @@
+{
+    "overall_stats": {
+        "total_reviews": 101, "average_stars": 2.9702970297029703, "rating_distribution": {
+            "4": 24, "3": 9, "5": 24, "1": 31, "2": 13
+        },
+        "first_review_date": "2013-06-11", "last_review_date": "2021-11-26"
+    },
+    "category_stats": [
+        {
+            "category": "Restaurants", "review_count": 101, "average_stars": 2.9702970297029703
+        }
+    ],
+    "review_summaries": [
+        {
+            "review_id": "Sx8TMOWLNuJBWer-0pcmoA", "business_name": "unknown", "category": "Restaurants", "date": "2017-01-14", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 111
+        },
+        {
+            "review_id": "cUZN1KkeJTBkWlg5L5_ZhA", "business_name": "unknown", "category": "Restaurants", "date": "2015-04-30", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 137
+        },
+        {
+            "review_id": "DK-hGw3XSTJHT26yjzeG3Q", "business_name": "unknown", "category": "Restaurants", "date": "2018-07-28", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 125
+        },
+        {
+            "review_id": "Ao214O9YtWypsE3197d7mA", "business_name": "unknown", "category": "Restaurants", "date": "2015-01-27", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 41
+        },
+        {
+            "review_id": "oiGwxN0SPUIhYkt4w9KaOw", "business_name": "unknown", "category": "Restaurants", "date": "2018-03-26", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 32
+        },
+        {
+            "review_id": "suk7ww92IbA7VGCkpYEnbA", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-14", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 106
+        },
+        {
+            "review_id": "Gapd3ZWI_Iuun9UpPt8WmA", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-15", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 45
+        },
+        {
+            "review_id": "nht0WjX_tV6NJRclHPWNdg", "business_name": "unknown", "category": "Restaurants", "date": "2015-04-23", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 87
+        },
+        {
+            "review_id": "WFhKDs6VyfRVtgezHHSb3Q", "business_name": "unknown", "category": "Restaurants", "date": "2016-07-11", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 93
+        },
+        {
+            "review_id": "S0dDTD7XlTnj7FpzkplUMg", "business_name": "unknown", "category": "Restaurants", "date": "2017-02-28", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 41
+        },
+        {
+            "review_id": "9g7ZlTdO3UYqefV72wD4sw", "business_name": "unknown", "category": "Restaurants", "date": "2015-02-12", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 56
+        },
+        {
+            "review_id": "cvz2o5qtAJ8vLc-SJ0m6tg", "business_name": "unknown", "category": "Restaurants", "date": "2019-12-02", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 18
+        },
+        {
+            "review_id": "F5RgL_m7MFL983znFx-t1g", "business_name": "unknown", "category": "Restaurants", "date": "2018-02-04", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 79
+        },
+        {
+            "review_id": "EgGMJejqejMMeVM4jZiISg", "business_name": "unknown", "category": "Restaurants", "date": "2014-04-15", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 89
+        },
+        {
+            "review_id": "c2jKwHgPgBDasHogqFKKxg", "business_name": "unknown", "category": "Restaurants", "date": "2020-08-10", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 36
+        },
+        {
+            "review_id": "-1qzkGPhIHdmlJgTOb0pNg", "business_name": "unknown", "category": "Restaurants", "date": "2019-04-15", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 52
+        },
+        {
+            "review_id": "6V_BkMrPrlAk1I1f5yW54Q", "business_name": "unknown", "category": "Restaurants", "date": "2017-10-27", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 86
+        },
+        {
+            "review_id": "YTy4idNdCpsje-Q9Vew6Xw", "business_name": "unknown", "category": "Restaurants", "date": "2014-11-19", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 67
+        },
+        {
+            "review_id": "JCl_gCUIzRgSyDPcpqQ_jQ", "business_name": "unknown", "category": "Restaurants", "date": "2015-03-10", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 105
+        },
+        {
+            "review_id": "aaoyv1iLDvYNw8B1ropB0w", "business_name": "unknown", "category": "Restaurants", "date": "2014-10-07", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 60
+        },
+        {
+            "review_id": "NtfBqbf4qIFn_6QVEEvpXg", "business_name": "unknown", "category": "Restaurants", "date": "2018-08-21", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 150
+        },
+        {
+            "review_id": "8xRo74HPtp3oidVy9ToQZg", "business_name": "unknown", "category": "Restaurants", "date": "2019-09-11", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 78
+        },
+        {
+            "review_id": "BmedI87GXDJDYYlTFG8u4g", "business_name": "unknown", "category": "Restaurants", "date": "2020-06-07", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 31
+        },
+        {
+            "review_id": "V9jo2YRNJxjiW868Df6Q7Q", "business_name": "unknown", "category": "Restaurants", "date": "2014-04-01", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 88
+        },
+        {
+            "review_id": "n1WHxezxyRsA1H32YJfhvA", "business_name": "unknown", "category": "Restaurants", "date": "2016-01-18", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 96
+        },
+        {
+            "review_id": "HVLox9DWcLFxQ3FObDSuYw", "business_name": "unknown", "category": "Restaurants", "date": "2018-05-30", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 63
+        },
+        {
+            "review_id": "ZCyvux8nvpaIuzWv3AjOlQ", "business_name": "unknown", "category": "Restaurants", "date": "2013-10-15", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 59
+        },
+        {
+            "review_id": "-bnp4JUYb8CPm0_PwoVFyA", "business_name": "unknown", "category": "Restaurants", "date": "2017-05-17", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 51
+        },
+        {
+            "review_id": "u2qP6OWSSnnGxH_1tjn9Pg", "business_name": "unknown", "category": "Restaurants", "date": "2013-06-11", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 62
+        },
+        {
+            "review_id": "56xLtxzDQBEZ7B3Vo0xzfg", "business_name": "unknown", "category": "Restaurants", "date": "2014-04-15", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 23
+        },
+        {
+            "review_id": "WRGlxQpt9qXmTwRruqDaBQ", "business_name": "unknown", "category": "Restaurants", "date": "2017-06-15", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 38
+        },
+        {
+            "review_id": "b_OcVecvew7HXKwNFEjjXw", "business_name": "unknown", "category": "Restaurants", "date": "2013-09-03", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 90
+        },
+        {
+            "review_id": "ePJxy0vqeFQbo-euUlf89g", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-29", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 77
+        },
+        {
+            "review_id": "Xz-G3GL6LIKjlW5mH5NiaA", "business_name": "unknown", "category": "Restaurants", "date": "2020-11-28", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 23
+        },
+        {
+            "review_id": "-kwPVh9dwlY1DFbb1i5IQw", "business_name": "unknown", "category": "Restaurants", "date": "2020-09-16", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 82
+        },
+        {
+            "review_id": "zK5ZWjiFDr5YjDfwWkKdWw", "business_name": "unknown", "category": "Restaurants", "date": "2013-08-15", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 44
+        },
+        {
+            "review_id": "c9HIwvgF-SkmxY1fEZhzIw", "business_name": "unknown", "category": "Restaurants", "date": "2014-10-13", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 30
+        },
+        {
+            "review_id": "eewZtgU-hUnvzlHPGM2sEg", "business_name": "unknown", "category": "Restaurants", "date": "2017-09-19", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 37
+        },
+        {
+            "review_id": "JoMBecUkvmEOKChniwCtPA", "business_name": "unknown", "category": "Restaurants", "date": "2016-07-30", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 44
+        },
+        {
+            "review_id": "XM-mRqmIrlcs7ZsO5tKhJQ", "business_name": "unknown", "category": "Restaurants", "date": "2019-05-30", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 52
+        },
+        {
+            "review_id": "Ys-Ow6RKSQ_ODEeCMfTBNA", "business_name": "unknown", "category": "Restaurants", "date": "2020-08-18", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 43
+        },
+        {
+            "review_id": "qVFtJYVi9Uk_DIYWvmIjtg", "business_name": "unknown", "category": "Restaurants", "date": "2018-02-21", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 63
+        },
+        {
+            "review_id": "Y5A8pyrUAhOXIXx6mwEyPg", "business_name": "unknown", "category": "Restaurants", "date": "2014-09-15", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 139
+        },
+        {
+            "review_id": "Yt5TQ1QemtB4s6VhqdxDZw", "business_name": "unknown", "category": "Restaurants", "date": "2018-04-29", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 27
+        },
+        {
+            "review_id": "1qVrjPOH2n2zUYEJd_49LQ", "business_name": "unknown", "category": "Restaurants", "date": "2014-08-26", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 47
+        },
+        {
+            "review_id": "MI252LOAqOv2jmTEXI1bHw", "business_name": "unknown", "category": "Restaurants", "date": "2017-03-18", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 65
+        },
+        {
+            "review_id": "AJ1NkW1V0Z0O3FHu07G5YQ", "business_name": "unknown", "category": "Restaurants", "date": "2016-08-29", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 87
+        },
+        {
+            "review_id": "AXsZ5kFLt3xk6WgvQc6Y1w", "business_name": "unknown", "category": "Restaurants", "date": "2013-08-26", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 28
+        },
+        {
+            "review_id": "ZvhvhrZwK0xqzMx2cs-LNA", "business_name": "unknown", "category": "Restaurants", "date": "2017-03-09", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 89
+        },
+        {
+            "review_id": "6AJYpyrupwrVY06KJJcnlQ", "business_name": "unknown", "category": "Restaurants", "date": "2014-10-06", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 61
+        },
+        {
+            "review_id": "gnzhLwClD7ms47jhx-L98A", "business_name": "unknown", "category": "Restaurants", "date": "2016-12-19", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 59
+        },
+        {
+            "review_id": "AdrebFQjNWd2NtYG_2SsIw", "business_name": "unknown", "category": "Restaurants", "date": "2018-10-14", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 52
+        },
+        {
+            "review_id": "FjMAunnihzamQrDWlhtXCQ", "business_name": "unknown", "category": "Restaurants", "date": "2015-06-01", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 76
+        },
+        {
+            "review_id": "pRdiDpimiyMgttq2B9HzQQ", "business_name": "unknown", "category": "Restaurants", "date": "2015-11-08", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 59
+        },
+        {
+            "review_id": "ZotdzNoH7ctg0bNDeIq6Xg", "business_name": "unknown", "category": "Restaurants", "date": "2014-09-14", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 125
+        },
+        {
+            "review_id": "A7hAgTLbbHC4rtLHVCeD3A", "business_name": "unknown", "category": "Restaurants", "date": "2016-02-27", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 72
+        },
+        {
+            "review_id": "3F9jPq1MBg4bUwvFbwURcQ", "business_name": "unknown", "category": "Restaurants", "date": "2016-07-30", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 46
+        },
+        {
+            "review_id": "jZ1WMIvJAyYASo_sEk595Q", "business_name": "unknown", "category": "Restaurants", "date": "2015-01-30", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 70
+        },
+        {
+            "review_id": "6tlOHFV-NYcH_jDgi0S6mQ", "business_name": "unknown", "category": "Restaurants", "date": "2018-07-16", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 40
+        },
+        {
+            "review_id": "ZsP7EZX6qwSqPi9FE59lTQ", "business_name": "unknown", "category": "Restaurants", "date": "2018-06-07", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 41
+        },
+        {
+            "review_id": "oAAfm5kTXBCjQwc2zSpaDA", "business_name": "unknown", "category": "Restaurants", "date": "2014-11-16", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 30
+        },
+        {
+            "review_id": "Q0jprRyyd8EBqcJUKVZywA", "business_name": "unknown", "category": "Restaurants", "date": "2015-03-10", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 57
+        },
+        {
+            "review_id": "jbjmgnyIEgj6xCHZOryChg", "business_name": "unknown", "category": "Restaurants", "date": "2018-06-08", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 99
+        },
+        {
+            "review_id": "8HzD6j7grn_BE4VM46zrkg", "business_name": "unknown", "category": "Restaurants", "date": "2017-12-23", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 75
+        },
+        {
+            "review_id": "3uKiz_JCz2ArudvmcmsIJw", "business_name": "unknown", "category": "Restaurants", "date": "2015-04-14", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 60
+        },
+        {
+            "review_id": "-xiKlWJTMZw6icTSsLbWJw", "business_name": "unknown", "category": "Restaurants", "date": "2019-04-06", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 100
+        },
+        {
+            "review_id": "0yTSeMLMsd7z9eUYJMqooQ", "business_name": "unknown", "category": "Restaurants", "date": "2019-02-22", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 115
+        },
+        {
+            "review_id": "G46Ysz24GHi_kmCCpa0foA", "business_name": "unknown", "category": "Restaurants", "date": "2015-01-06", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 119
+        },
+        {
+            "review_id": "fc-4cnB6QbCNiwLcyFg7Pg", "business_name": "unknown", "category": "Restaurants", "date": "2016-06-27", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 93
+        },
+        {
+            "review_id": "Bb7A0j9OjsaKecbVVy9J8w", "business_name": "unknown", "category": "Restaurants", "date": "2017-10-10", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 84
+        },
+        {
+            "review_id": "s9bXIrx6DQEW1qI8bezYuA", "business_name": "unknown", "category": "Restaurants", "date": "2017-09-19", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 65
+        },
+        {
+            "review_id": "W70PZJg9SN3-AybCFYh2_g", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-05", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 37
+        },
+        {
+            "review_id": "DSb1Ms6cLQoF-rrc37xErw", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-03", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 33
+        },
+        {
+            "review_id": "52BnMLUV-DNrsRnBBBmSrw", "business_name": "unknown", "category": "Restaurants", "date": "2017-11-17", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 125
+        },
+        {
+            "review_id": "uB1V9quoGP_cFROqOY3_sg", "business_name": "unknown", "category": "Restaurants", "date": "2020-08-09", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 63
+        },
+        {
+            "review_id": "_pfiOTtiSvcby76MlsYWIQ", "business_name": "unknown", "category": "Restaurants", "date": "2021-11-26", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 27
+        },
+        {
+            "review_id": "ZpGcjbFo2QjSXn9VyRKd6g", "business_name": "unknown", "category": "Restaurants", "date": "2017-08-09", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 69
+        },
+        {
+            "review_id": "136elPDLKXMMdG-GMVO0tg", "business_name": "unknown", "category": "Restaurants", "date": "2017-09-11", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 65
+        },
+        {
+            "review_id": "wc1OLjSi4su_AROX8RwudA", "business_name": "unknown", "category": "Restaurants", "date": "2016-02-01", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 25
+        },
+        {
+            "review_id": "uERQ9VGTgWYLtwnKLdrHeA", "business_name": "unknown", "category": "Restaurants", "date": "2014-11-17", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 59
+        },
+        {
+            "review_id": "cfhtEtqVRRkyrkdkfrm85w", "business_name": "unknown", "category": "Restaurants", "date": "2017-05-30", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 65
+        },
+        {
+            "review_id": "xphcDcX1HmpZ5yCh37fwjQ", "business_name": "unknown", "category": "Restaurants", "date": "2018-04-08", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 38
+        },
+        {
+            "review_id": "JLLCmMZVbjEcSRqFHhJxOg", "business_name": "unknown", "category": "Restaurants", "date": "2016-07-30", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 80
+        },
+        {
+            "review_id": "H6bd7wuxR7J9DXlbHbaX_Q", "business_name": "unknown", "category": "Restaurants", "date": "2016-06-27", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 183
+        },
+        {
+            "review_id": "CsBytEWOioMiQASFBc2gFg", "business_name": "unknown", "category": "Restaurants", "date": "2018-03-26", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 40
+        },
+        {
+            "review_id": "qcEtUh0HitvIa1yS2f_n6Q", "business_name": "unknown", "category": "Restaurants", "date": "2016-07-11", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 85
+        },
+        {
+            "review_id": "kHfANrsiugdHakl6oZsYTg", "business_name": "unknown", "category": "Restaurants", "date": "2015-10-04", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 39
+        },
+        {
+            "review_id": "xQgcpHEsmngHjYm2fa_JSw", "business_name": "unknown", "category": "Restaurants", "date": "2015-07-31", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 31
+        },
+        {
+            "review_id": "4kqKK-rlTbdY_ArEnwsi1g", "business_name": "unknown", "category": "Restaurants", "date": "2019-09-11", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 26
+        },
+        {
+            "review_id": "IdS1Pw_akHjI4JSU0jBlgw", "business_name": "unknown", "category": "Restaurants", "date": "2018-03-14", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 61
+        },
+        {
+            "review_id": "iPqIgLm3_VX-AxsmhN0uXA", "business_name": "unknown", "category": "Restaurants", "date": "2020-11-20", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 41
+        },
+        {
+            "review_id": "k8Wylz6N7hXseAoCbe6ZzQ", "business_name": "unknown", "category": "Restaurants", "date": "2016-09-20", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 108
+        },
+        {
+            "review_id": "Nimpl8nuJ0c2KGYdHG8c-g", "business_name": "unknown", "category": "Restaurants", "date": "2015-02-20", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 140
+        },
+        {
+            "review_id": "nmbe7e6LRGpmmLgHJ8NbJQ", "business_name": "unknown", "category": "Restaurants", "date": "2017-07-21", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 42
+        },
+        {
+            "review_id": "D11Ju6-zqoOXWxQi_V1IZA", "business_name": "unknown", "category": "Restaurants", "date": "2016-09-01", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 121
+        },
+        {
+            "review_id": "z0Or5Lc9wDVqO4pxQvkSog", "business_name": "unknown", "category": "Restaurants", "date": "2014-09-15", "stars": 3.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 140
+        },
+        {
+            "review_id": "IEk0AH_xirpQoVchhbgEXg", "business_name": "unknown", "category": "Restaurants", "date": "2015-03-30", "stars": 2.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 66
+        },
+        {
+            "review_id": "u3Tt0IZ2wOwpdZNFtdjbkQ", "business_name": "unknown", "category": "Restaurants", "date": "2015-07-13", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 122
+        },
+        {
+            "review_id": "1sPw_mBqpld6bIe4g8ga3g", "business_name": "unknown", "category": "Restaurants", "date": "2017-06-06", "stars": 5.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 47
+        },
+        {
+            "review_id": "4rALvtQwG_O6AEx7Nok3QA", "business_name": "unknown", "category": "Restaurants", "date": "2021-11-21", "stars": 1.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 42
+        },
+        {
+            "review_id": "vWAN45rglwX8iowq759OyA", "business_name": "unknown", "category": "Restaurants", "date": "2018-05-18", "stars": 4.0, "aspects": [],
+            "key_phrases": [],
+            "length_tokens": 38
+        }
+    ],
+    "linguistic_traits": {
+        "avg_tokens": 68.5940594059406, "median_tokens": 62, "uses_first_person": true,
+        "top_adjectives": ["food", "salad", "good", "back", "get", "service", "like", "cheese", "time", "one"]
+    }
+}
