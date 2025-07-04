@@ -37,9 +37,12 @@
     - tally buyer utility and seller revenue results
 
 ### Stage 3: Adapt and implement baselines:
+8. Work on Heuristic methods
 8. Work on LLM-ETL methods
-9. Work on dense retrieval methods
-10. Work on generative retrieval methods
+9. Work on Dense retrieval methods
+10. Work on Generative retrieval methods
+11. Work on Recommendation methods -- basic
+12. Work no Conversational Recommendation methods!
 
 
 ------
