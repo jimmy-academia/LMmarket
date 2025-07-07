@@ -1,144 +1,99 @@
+# python -m dataset.make_yelp
+
 import json
 from collections import defaultdict, Counter
-from datetime import datetime
-import re
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-import string
-import os
+from utils import get_dset_root, dumpj, iter_line
+from debug import check
 
-from tqdm import tqdm 
+def filter_user_item_data():
+    dsetroot = get_dset_root()
+    dsetroot = dsetroot / 'yelp'
+    business_file = dsetroot/"yelp_academic_dataset_business.json" # 150346
+    review_file = dsetroot/"yelp_academic_dataset_review.json" # 6990280
+    tip_file = dsetroot/"yelp_academic_dataset_tip.json" # 908915
+    # user_file = dsetroot/"yelp_academic_dataset_user.json" # 1987897
 
-# Ensure required NLTK resources are downloaded
-import nltk
-nltk.download('punkt')
-nltk.download('stopwords')
+    # --- Part 1: Process business_file to build the CITYR skeleton ---
+    all_restaurant_ids = set()
+    city_restaurant_counts = Counter()
+    _restaurants_filtered = defaultdict(dict)
 
-from utils import get_dset_root, dumpj
-
-make_bar = lambda f, x: tqdm(f, ncols=88, total=x)
-
-dsetroot = get_dset_root()
-dsetroot = dsetroot/'yelp'
-business_file = dsetroot/"yelp_academic_dataset_business.json"
-review_file = dsetroot/"yelp_academic_dataset_review.json"
-tip_file = dsetroot/"yelp_academic_dataset_business.json"
-user_file = dsetroot/"yelp_academic_dataset_user.json"
-
-# Step 1: Identify restaurant business_ids
-restaurant_business_ids = set()
-with open(business_file, "r", encoding="utf-8") as f:
-    for line in f:
+    for line in iter_line(business_file, 150346):
         biz = json.loads(line)
         if biz.get("categories") and "restaurant" in biz["categories"].lower():
-            restaurant_business_ids.add(biz["business_id"])
-
-# Step 2: Collect user reviews for restaurant businesses
-user_reviews = defaultdict(list)
-with open(review_file, "r", encoding="utf-8") as f:
-    for line in f:
-        rev = json.loads(line)
-        if rev["business_id"] in restaurant_business_ids:
-            user_reviews[rev["user_id"]].append(rev)
-
-# Step 3: Filter users with more than 50 restaurant reviews
-qualified_users = {user_id: reviews for user_id, reviews in user_reviews.items() if len(reviews) > 50}
-
-# Step 4: Filter cities with more than 500 restaurants, retain restaurant in these cities that has more than 50 reviews.
-
-city_restaurants_all = defaultdict(set)
-city_restaurants_filtered = defaultdict(set)
-
-with open(business_file, "r", encoding="utf-8") as f:
-    for line in make_bar(f, 150346):
-        biz = json.loads(line)
-        if biz.get("categories") and "restaurant" in biz["categories"].lower():
-            city = biz.get("city", "").strip()
             biz_id = biz["business_id"]
+            city = biz.get("city", "X").strip()
             review_count = biz.get("review_count", 0)
 
-            # Group all restaurants by city
-            city_restaurants_all[city].add(biz_id)
+            all_restaurant_ids.add(biz_id)
+            city_restaurant_counts[city] += 1
 
-            # Filter: more than 50 reviews
             if review_count > 50:
-                city_restaurants_filtered[city].add(biz_id)
+                # Store the entire business JSON object
+                for key in ['address', 'city', 'state', 'postal_code', 'latitude', 'longitude']:
+                    if key in biz:
+                        del biz[key]
+                _restaurants_filtered[city][biz_id] = biz
 
-# Only keep cities with more than 500 restaurants total
-final_city_restaurants = {
-    city: biz_ids
-    for city, biz_ids in city_restaurants_filtered.items()
-    if len(city_restaurants_all[city]) > 500
-}
+    city_restaurant_counts.pop("X", None)
+    cities = {city for city, count in city_restaurant_counts.items() if count > 500}
 
-# Summary report
-print(f"{'City':30s} | {'Total':>6} | {'Filtered >50 reviews':>20}")
-print("-" * 60)
-for city in sorted(final_city_restaurants, key=lambda x: -len(final_city_restaurants[x])):
-    total = len(city_restaurants_all[city])
-    filtered = len(final_city_restaurants[city])
-    print(f"{city:30s} | {total:6d} | {filtered:20d}")
+    # --- Part 2: Build the final CITYR structure and helper map ---
+    CITYR = defaultdict(dict)
+    biz_to_city_map = {}
 
+    for city, businesses in _restaurants_filtered.items():
+        if city in cities:
+            for biz_id, biz_info in businesses.items():
+                # For each target business, create its final structure
+                CITYR[city][biz_id] = {
+                    "info": biz_info,
+                    "interactions": [] # Ready to hold reviews and tips
+                }
+                biz_to_city_map[biz_id] = city
 
-# Helper functions
-def clean_text(text):
-    return text.translate(str.maketrans('', '', string.punctuation)).lower()
+    # --- Part 3: Process interaction files (reviews AND tips) ---
+    user_interactions = defaultdict(list)
 
-def extract_adjectives(text):
-    words = word_tokenize(clean_text(text))
-    filtered = [word for word in words if word not in stopwords.words('english') and word.isalpha()]
-    return filtered
+    # Process reviews
+    for line in iter_line(review_file, 6990280):
+        rev = json.loads(line)
+        biz_id = rev["business_id"]
+        revtext = rev['text'] + f'| stars: {rev["stars"]}; useful: {rev["useful"]}; funny: {rev["funny"]}; cool: {rev["cool"]}'
+        if biz_id in all_restaurant_ids:
+            user_interactions[rev["user_id"]].append(revtext)
+        
+        city = biz_to_city_map.get(biz_id)
+        if city:
+            CITYR[city][biz_id]["interactions"].append(revtext)
 
-def estimate_tokens(text):
-    return len(word_tokenize(text))
+    # Process tips
+    for line in iter_line(tip_file, 908915):
+        tip = json.loads(line)
+        biz_id = tip["business_id"]
+        # Add a type identifier
+        if biz_id in all_restaurant_ids:
+            user_interactions[tip["user_id"]].append(tip['text'])
+            
+        city = biz_to_city_map.get(biz_id)
+        if city:
+            CITYR[city][biz_id]["interactions"].append(tip['text'])
 
-# Step 4: Process one sample user
-sample_user_id, sample_reviews = next(iter(qualified_users.items()))
-review_summaries = []
-all_adjectives = []
-
-for rev in sample_reviews:
-    text = rev["text"]
-    tokens = estimate_tokens(text)
-    adjectives = extract_adjectives(text)
-    all_adjectives.extend(adjectives)
-    
-    review_summaries.append({
-        "review_id": rev["review_id"],
-        "business_name": "unknown",
-        "category": "Restaurants",
-        "date": rev["date"].split(" ")[0],
-        "stars": rev["stars"],
-        "aspects": [],  # Placeholder
-        "key_phrases": [],  # Placeholder
-        "length_tokens": tokens
-    })
-
-# Compute overall stats
-rating_distribution = Counter([int(r["stars"]) for r in sample_reviews])
-dates = [datetime.strptime(r["date"], "%Y-%m-%d %H:%M:%S") for r in sample_reviews]
-first_review_date = min(dates).strftime("%Y-%m-%d")
-last_review_date = max(dates).strftime("%Y-%m-%d")
-
-user_profile = {
-    "overall_stats": {
-        "total_reviews": len(sample_reviews),
-        "average_stars": sum([r["stars"] for r in sample_reviews]) / len(sample_reviews),
-        "rating_distribution": dict(rating_distribution),
-        "first_review_date": first_review_date,
-        "last_review_date": last_review_date
-    },
-    "category_stats": [
-        { "category": "Restaurants", "review_count": len(sample_reviews), "average_stars": sum([r["stars"] for r in sample_reviews]) / len(sample_reviews) }
-    ],
-    "review_summaries": review_summaries,
-    "linguistic_traits": {
-        "avg_tokens": sum([r["length_tokens"] for r in review_summaries]) / len(review_summaries),
-        "median_tokens": sorted([r["length_tokens"] for r in review_summaries])[len(review_summaries)//2],
-        "uses_first_person": any(re.search(r'\b(i|me|my|mine|we|us|our|ours)\b', r["text"].lower()) for r in sample_reviews),
-        "top_adjectives": [word for word, _ in Counter(all_adjectives).most_common(10)]
+    # --- Part 4: Final user filtering based on combined interactions ---
+    USERS = {
+        uid: interactions for uid, interactions in user_interactions.items()
+        if len(interactions) > 50
     }
-}
 
-dumpj(user_profile, 'sample_user.json')
+    return USERS, CITYR
 
+def main():
+
+    USERS, CITYR = filter_user_item_data()
+    check()
+
+
+
+
+if __name__ == '__main__':
+    main()

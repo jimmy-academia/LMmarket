@@ -2,6 +2,8 @@ import re
 import json
 from pathlib import Path
 
+from tqdm import tqdm
+
 def readf(path):
     with open(path, 'r') as f:
         return f.read()
@@ -41,3 +43,13 @@ def dumpj(dictionary, filepath):
 def loadj(filepath):
     with open(filepath) as f:
         return json.load(f)
+
+def iter_line(filepath, total=None):
+    if total is None:
+        with open(filepath, "r", encoding="utf-8") as f:
+            total = sum(1 for _ in f)
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in tqdm(f, total=total, ncols=90):
+            yield line
+
