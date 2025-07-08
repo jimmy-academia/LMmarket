@@ -32,7 +32,7 @@ class NamespaceEncoder(json.JSONEncoder):
     else:
       return super().default(obj)
 
-def dumpj(dictionary, filepath):
+def dumpj(filepath, dictionary):
     with open(filepath, "w") as f:
         obj = json.dumps(dictionary, indent=4, cls=NamespaceEncoder)
         obj = re.sub(r'("|\d+),\s+', r'\1, ', obj)
@@ -53,3 +53,10 @@ def iter_line(filepath, total=None):
         for line in tqdm(f, total=total, ncols=90):
             yield line
 
+def load_make(path, build_fn, cache_fn=dumpj):
+    if path.exists():
+        return loadj(path)
+    else:
+        result = build_fn()
+        cache_fn(path, result)
+        return result
