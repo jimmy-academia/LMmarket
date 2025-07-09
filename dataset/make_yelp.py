@@ -197,36 +197,111 @@ def build_user_profile(USERS, model="openai"):
 ####################
 ### ITEM PROFILE ###
 ####################
+ 
+static_feature_descriptives_item = {
+    "food_quality": ["Inedible or poorly prepared", "Bland or inconsistent", "Generally acceptable taste", "Tasty and well-executed", "Exceptional flavor and preparation"],
+    "portion_size": ["Extremely small or unsatisfying", "Somewhat undersized", "Standard / as expected", "Generous portions", "Very large or extremely generous"],
+    "service_speed": ["Extremely slow or inattentive", "Slower than expected", "Average speed", "Prompt and efficient", "Exceptionally fast and attentive"],
+    "service_attitude": ["Rude or dismissive staff", "Unfriendly or cold", "Neutral or businesslike", "Friendly and courteous", "Exceptionally warm and accommodating"],
+    "cleanliness": ["Dirty or unsanitary", "Below average cleanliness", "Generally clean", "Very clean and tidy", "Immaculate and spotless"],
+    "cost": ["Extremely cheap or budget-friendly", "Below average pricing", "Moderately priced / mid-range", "High-end or premium pricing", "Very expensive or luxury-level"]
+}
+ 
+def format_feature_prompt_item(restaurant_reviews, feature_name, spectrum):
+    scale = "\n".join([f"{i-2}. {desc}" for i, desc in enumerate(spectrum)])
+    return f"""
+You are evaluating customer's reviews to a restaurant.
+ 
+Below are their recent reviews:
+{textwrap.shorten(restaurant_reviews, width=6000)}
+ 
+Now consider the feature: **{feature_name}**
+ 
+Rate this restaurant's feature on the following -2 to +2 scale:
+{scale}
+ 
+Return only a single float value from -2 to 2.
+"""
+ 
+def format_description_and_dynamic_prompt_item(restaurant_reviews):
+    return f"""
+Based on the following restaurant reviews:
+ 
+{textwrap.shorten(restaurant_reviews, width=6000)}
+ 
+Generate:
+1. A short summary (1–2 sentences) describing the restaurant’s overall qualities, strengths, and customer appeal.
+2. A list of any notable features, offerings, or characteristics — e.g. vegetarian options, outdoor seating, kid-friendly atmosphere, allergy-conscious menu, etc.
+ 
+Return valid JSON:
+{{
+  "text_description": str,
+  "dynamic_preferences": [str]
+}}
+"""
 
-
-
-def build_item_profile(CITYR):
+ 
+def build_item_profile(CITYR, model="openai"):
     '''
     read item reviews (CITYR) to create 
     feature vector + cost
     text descriptions profile summary
     record special features into dynamic feature pool;
     '''
-    pass
-
-
+ 
+    # collect restaurants
+    restaurants = []
+    for city, bizs in CITYR.items():
+        for biz_id, biz_data in bizs.items():
+            restaurants.append({
+                'biz_id': biz_id,
+                'biz_data': biz_data
+            })
+    # create profiles
+    profiles = []
+    for restaurant in tqdm(restaurants, ncols=90, desc="Building item profiles"):
+        restaurant_reviews = "\n".join(restaurant['biz_data']['interactions'])
+        preference_vector = []
+ 
+        for feature_name, descriptions in static_feature_descriptives_item.items():
+            response = query_llm(format_feature_prompt_item(restaurant_reviews, feature_name, descriptions), model=model).strip()
+            score = max(-1.0, min(1.0, float(response)/2))
+            preference_vector.append(score)
+ 
+        ## budget and price sensitivity
+        cost = preference_vector.pop(-1)
+ 
+        extra_data = safe_json_extract(format_description_and_dynamic_prompt_item(restaurant_reviews), model=model)
+        summary = extra_data.get("text_description", "")
+        dynamic_preferences = extra_data.get("dynamic_preferences", [])
+ 
+        profile = {
+            "item_id": restaurant["biz_id"],
+            "preference_vector": preference_vector,
+            "cost": cost,
+            "text_description": summary,
+            "dynamic_preferences": dynamic_preferences
+        }
+ 
+        profiles.append(profile)
+ 
+    return profiles
+ 
 def main():
     cache_dir = Path("cache")
     cache_dir.mkdir(exist_ok=True)
-
+ 
     user_item_path = cache_dir / "user_and_item_data.json"
     user_item_data = load_make(user_item_path, filter_user_item_data)
-
+ 
     USERS = user_item_data["USERS"]
     CITYR = user_item_data["CITYR"]
-
+ 
     user_profile_path = cache_dir / "user_profile.json"
     item_profile_path = cache_dir / "item_profile.json"
-
+ 
     user_profile = load_make(user_profile_path, lambda: build_user_profile(USERS))
     item_profile = load_make(item_profile_path, lambda: build_item_profile(CITYR))
-
-
 
 
 
