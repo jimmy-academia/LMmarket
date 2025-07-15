@@ -1,0 +1,82 @@
+[
+    {
+        "uid": 0, "user_id": "bcjbaE6dDog4jkNY91ncLQ", "price_sensitivity": 0.5, "text_description": "The user enjoys trying a variety of dishes, particularly vegetarian options, and appreciates fresh ingredients and good service. They have a preference for flavorful meals but are sensitive to pricing, often noting the value of vegetarian dishes compared to meat options. They also enjoy unique drinks and desserts, and while they have had some negative experiences, they are willing to give places another chance.", "preferences": ["Vegetarian options", "Fresh ingredients", "Value for money", "Good service", "Unique drinks and desserts"],
+        "importance": [0.25, 0.2, 0.2, 0.15, 0.2]
+    },
+    {
+        "uid": 1, "user_id": "j2wlzrntrbKwyOcOiB3l3w", "price_sensitivity": 0.25, "text_description": "The user is a Celiac who prioritizes gluten-free dining options and enjoys exploring restaurants that accommodate their dietary needs. They appreciate knowledgeable staff who can recommend safe menu items and have a preference for cozy, unpretentious atmospheres. While they enjoy good food and drink, they are also discerning about the quality of gluten-free offerings, particularly pizza crusts and desserts.", "preferences": ["Gluten-free dining options", "Knowledgeable staff about gluten-free menu items", "Cozy and unpretentious atmosphere", "Quality of gluten-free pizza crust", "Availability of gluten-free desserts"],
+        "importance": [0.9, 0.8, 0.7, 0.8, 0.6]
+    },
+    {
+        "uid": 2, "user_id": "IQsF3Rc6IgCzjVV9DE8KXg", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, particularly favoring vegan options and places with good service. They appreciate flavorful dishes and a comfortable atmosphere for working or socializing, though they are sensitive to noise levels and lighting in restaurants.", "preferences": ["Vegan options", "Flavorful dishes", "Good service", "Comfortable atmosphere for working", "Moderate noise levels", "Adequate lighting"],
+        "importance": [0.9, 0.8, 0.8, 0.7, 0.6, 0.5]
+    },
+    {
+        "uid": 3, "user_id": "RreNy--tOmXMl1en0wiBOg", "price_sensitivity": 0.25, "text_description": "The user enjoys dining at restaurants with good food quality and a pleasant atmosphere, often valuing service and the overall dining experience. They appreciate healthy options and unique flavors, particularly in breakfast and sushi dishes, while also being mindful of price and portion sizes.", "preferences": ["Good food quality", "Pleasant atmosphere", "Excellent service", "Healthy options", "Unique flavors", "Price sensitivity", "Portion sizes"],
+        "importance": [0.25, 0.2, 0.2, 0.15, 0.1, 0.05, 0.05]
+    },
+    {
+        "uid": 4, "user_id": "Jha0USGDMefGFRLik_xFQg", "price_sensitivity": 0.25, "text_description": "The user enjoys dining at various restaurants, particularly appreciating friendly service, quick food delivery, and a pleasant atmosphere. They have a strong preference for places that offer unique menu items and a welcoming environment, often returning to establishments that meet these criteria.", "preferences": ["Friendly service", "Quick food delivery", "Pleasant atmosphere", "Unique menu items", "Outdoor seating options", "Generous portion sizes"],
+        "importance": [0.25, 0.25, 0.2, 0.15, 0.1, 0.05]
+    },
+    {
+        "uid": 5, "user_id": "ZGjgfSvjQK886kiTzLwfLQ", "price_sensitivity": 0.5, "text_description": "The user enjoys a variety of dining experiences, particularly those that offer unique and flavorful dishes, as well as good service. They appreciate places with a lively atmosphere and good drink selections, but are also mindful of price and portion sizes. They tend to favor restaurants that provide a memorable experience beyond just the food.", "preferences": ["Unique and flavorful dishes", "Good service", "Lively atmosphere", "Good drink selection", "Value for money", "Portion sizes"],
+        "importance": [0.25, 0.25, 0.2, 0.15, 0.1, 0.05]
+    },
+    {
+        "uid": 6, "user_id": "IKbjLnfBQtEyVzEu8CuOLg", "price_sensitivity": 0.25, "text_description": "The user enjoys trying a variety of cuisines, particularly Thai and Mediterranean food, and appreciates good service. They tend to favor flavorful dishes but are critical of poor quality or service experiences, often sharing their thoughts on specific menu items.", "preferences": ["Enjoys flavorful dishes", "Appreciates good service", "Likes trying different cuisines", "Prefers laid-back dining experiences", "Critical of poor quality food", "Values reasonable prices"],
+        "importance": [0.25, 0.25, 0.2, 0.15, 0.1, 0.05]
+    },
+    {
+        "uid": 7, "user_id": "DBYhpb5hrAYgQjQaMhNYyQ", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, particularly those that offer unique and flavorful dishes, craft beers, and a welcoming atmosphere. They appreciate good service and often seek out kid and dog-friendly environments, as well as options for vegetarian and vegan friends. The user values both the quality of food and the overall dining experience, including decor and ambiance.", "preferences": ["Variety of dishes", "Craft beers", "Good service", "Kid-friendly environment", "Dog-friendly environment", "Vegetarian options", "Vegan options", "Unique dining experiences", "Inviting atmosphere", "Quality of food"],
+        "importance": [0.9, 0.8, 0.8, 0.7, 0.7, 0.6, 0.6, 0.8, 0.9]
+    },
+    {
+        "uid": 8, "user_id": "NUtIAX-ygn474tDg5nmesg", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of cuisines, particularly Thai and Italian, and appreciates dishes that are well-prepared with balanced flavors. They tend to prefer less herbaceous dishes, favoring creamy textures and generous portions of protein. The user values good service and a pleasant dining experience, often sharing meals with friends and family.", "preferences": ["Enjoys creamy and well-balanced dishes", "Prefers less herbaceous flavors", "Values generous portions of protein", "Appreciates good service and ambiance", "Likes creative side dishes", "Enjoys sharing meals with others"],
+        "importance": [0.3, 0.2, 0.25, 0.15, 0.05, 0.05]
+    },
+    {
+        "uid": 9, "user_id": "xbybLiQockAzC4xAlzFrGg", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, particularly favoring local and unique restaurants with a focus on quality food and atmosphere. They appreciate trendy spots with good service and are willing to spend a bit more for a memorable experience, often sharing dishes to try more options.", "preferences": ["Local and unique dining experiences", "High-quality food", "Trendy and clean atmosphere", "Good service", "Willingness to spend more for quality", "Sharing dishes to try multiple options", "Happy hour specials"],
+        "importance": [0.9, 0.9, 0.8, 0.8, 0.7, 0.7, 0.6]
+    },
+    {
+        "uid": 10, "user_id": "wp-uX1pnNjAIDBNnQxz1ZQ", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of cuisines, frequently returning to restaurants that offer high-quality food, particularly barbecue, Vietnamese, and unique pasta dishes. They appreciate good service and often seek out hidden gems in the St. Louis area, while also being critical of family-friendliness in dining establishments.", "preferences": ["High-quality food", "Good service", "Family-friendly options", "Unique and diverse menu items", "Hidden gem restaurants"],
+        "importance": [0.4, 0.3, 0.1, 0.1, 0.1]
+    },
+    {
+        "uid": 11, "user_id": "07aVWNhBhpwqW3MdqoKDKQ", "price_sensitivity": 0.5, "text_description": "The user enjoys exploring diverse menus and appreciates well-presented dishes, particularly those featuring cured meats and baked goods. They have a mixed experience with service and food quality, often expressing a desire for better execution in both areas, while also valuing a good cocktail selection.", "preferences": ["Diverse menu options", "Well-presented dishes", "Cured Italian meats", "Baked goods", "Good cocktail selection", "Quality service", "Value for money"],
+        "importance": [0.8, 0.7, 0.9, 0.6, 0.8, 0.7, 0.5]
+    },
+    {
+        "uid": 12, "user_id": "Zs8Zk3sgh5JxRmoZW4PJcg", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, often seeking out unique flavors and well-prepared dishes. They appreciate good service and a comfortable atmosphere, but are also critical of places that don't meet their expectations, particularly when it comes to food quality and menu variety.", "preferences": ["Enjoys unique and flavorful dishes", "Values good service", "Appreciates a comfortable dining atmosphere", "Prefers well-prepared food", "Critical of overly fancy or confusing menus"],
+        "importance": [0.25, 0.2, 0.15, 0.25, 0.15]
+    },
+    {
+        "uid": 13, "user_id": "Pbry-b9xBgHlWlbGlYbTZg", "price_sensitivity": 0.5, "text_description": "The user enjoys dining out frequently, particularly at restaurants with good happy hour deals and a variety of menu options. They appreciate friendly service and a comfortable ambiance but are critical of food quality, especially regarding saltiness and freshness.", "preferences": ["Good happy hour deals", "Friendly service", "Comfortable ambiance", "Food quality", "Variety of menu options", "Freshness of ingredients", "Authenticity of cuisine"],
+        "importance": [0.9, 0.8, 0.7, 0.9, 0.8, 0.9, 0.6]
+    },
+    {
+        "uid": 14, "user_id": "kHmXUEOAsIbguUrPoX6Tkg", "price_sensitivity": 0.5, "text_description": "The user enjoys flavorful and well-prepared food, often seeking unique dining experiences and high-quality ingredients. They appreciate attentive service and a pleasant atmosphere but can be deterred by poor service or lackluster decor. Price sensitivity is evident, especially when it comes to portion sizes and value for money.", "preferences": ["Flavorful and well-seasoned food", "Unique dining experiences", "Attentive and knowledgeable service", "Pleasant and inviting atmosphere", "Value for money", "Consistent portion sizes"],
+        "importance": [0.25, 0.2, 0.2, 0.15, 0.1, 0.1]
+    },
+    {
+        "uid": 15, "user_id": "pYXeL0RCqus2IfhthYCOyA", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, often seeking out places with good service and flavorful food. They prefer to visit restaurants during off-peak hours for a more relaxed atmosphere and appreciate friendly staff who remember their orders.", "preferences": ["Good service", "Flavorful food", "Dining during off-peak hours", "Friendly staff", "Memorable dishes"],
+        "importance": [0.25, 0.25, 0.2, 0.15, 0.15]
+    },
+    {
+        "uid": 16, "user_id": "3TL6HZ1JrKcNTvGDWKlrow", "price_sensitivity": 0.5, "text_description": "The user has a strong preference for fresh, high-quality food and good customer service. They are likely to avoid restaurants with poor management, dirty environments, or inconsistent food quality. They appreciate when their orders are correct and timely, and they are willing to travel for better dining experiences.", "preferences": ["Fresh and high-quality food", "Good customer service", "Correct and timely orders", "Clean and well-maintained environment", "Consistent food quality"],
+        "importance": [0.3, 0.25, 0.2, 0.15, 0.1]
+    },
+    {
+        "uid": 17, "user_id": "OkjeFppodgJP_CvB84cJYw", "price_sensitivity": 0.5, "text_description": "The user enjoys a variety of cuisines, particularly Thai and Malaysian, and appreciates flavorful dishes with good quality ingredients. They value ambiance and service, but are critical of overpriced meals and poor dining experiences. The user prefers milder flavors and often seeks out healthier options, such as vegan dishes.", "preferences": ["Enjoys flavorful and quality food", "Values good service and ambiance", "Prefers milder flavors over spicy", "Appreciates healthier options", "Critical of overpriced meals", "Likes trying new cuisines"],
+        "importance": [0.25, 0.2, 0.15, 0.15, 0.15, 0.1]
+    },
+    {
+        "uid": 18, "user_id": "Cvi8nZTwDVaQkqmmgQwQMw", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of cuisines, particularly Szechuan, Dominican, and burgers, and appreciates generous portions and flavorful dishes. They often seek out restaurants with good value for money and have a preference for BYOB establishments. The user also values good service and a pleasant ambiance during their dining experiences.", "preferences": ["Enjoys Szechuan cuisine", "Likes Dominican food", "Prefers burgers", "Appreciates generous portions", "Values flavorful dishes", "Seeks good value for money", "Prefers BYOB restaurants", "Values good service", "Enjoys a pleasant ambiance"],
+        "importance": [0.9, 0.8, 0.85, 0.9, 0.95, 0.9, 0.8, 0.85, 0.8]
+    },
+    {
+        "uid": 19, "user_id": "x-LrGPXN7WFX15Qk9B6_YQ", "price_sensitivity": 0.25, "text_description": "The user enjoys a variety of dining experiences, from casual sports bars to upscale restaurants. They appreciate fresh ingredients, unique flavors, and a lively atmosphere, often favoring places that offer a memorable experience, whether it's through food or ambiance.", "preferences": ["Enjoys casual dining with a lively atmosphere", "Values fresh and high-quality ingredients", "Prefers unique and flavorful dishes", "Appreciates good customer service", "Likes restaurants that offer a memorable experience"],
+        "importance": [0.8, 0.9, 0.85, 0.9, 0.95]
+    }
+]

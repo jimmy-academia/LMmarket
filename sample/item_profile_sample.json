@@ -1,0 +1,82 @@
+[
+    {
+        "iid": 0, "item_id": "MTSW4McQd7CbVtyjqoe9mw", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 1, "item_id": "MUTTqe8uqyMdBl186RmNeA", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, which significantly influence their overall satisfaction.", "features": ["Quality of food", "Service", "Ambiance", "Price", "Location", "Menu variety"],
+        "importance": [0.35, 0.25, 0.2, 0.1, 0.05, 0.05]
+    },
+    {
+        "iid": 2, "item_id": "ROeacJQwBeh05Rqg7F6TCg", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers often comment on the quality of food, service, and ambiance, with some expressing dissatisfaction regarding wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 3, "item_id": "QdN72BWoyFypdGJhhI5r7g", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance as key factors influencing their overall satisfaction.", "features": ["Quality of food", "Service", "Ambiance", "Price", "Location", "Menu variety"],
+        "importance": [0.35, 0.25, 0.2, 0.1, 0.05, 0.05]
+    },
+    {
+        "iid": 4, "item_id": "aPNXGTDkf-4bjhyMBQxqpQ", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance as key factors influencing their overall satisfaction.", "features": ["Quality of food", "Service", "Ambiance", "Price", "Location", "Menu variety", "Cleanliness"],
+        "importance": [0.35, 0.25, 0.15, 0.1, 0.05, 0.05, 0.05]
+    },
+    {
+        "iid": 5, "item_id": "ppFCk9aQkM338Rgwpl2F5A", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 6, "item_id": "3BJxm-HnvzdwD1zjmSbmyQ", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, which significantly influence their overall satisfaction.", "features": ["Quality of Food", "Service", "Ambiance", "Price", "Location", "Cleanliness", "Menu Variety"],
+        "importance": [0.35, 0.25, 0.15, 0.1, 0.05, 0.05, 0.05]
+    },
+    {
+        "iid": 7, "item_id": "WYYdQDjx-DsCanlP0DpImQ", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 8, "item_id": "bTve2mwLk5Zc01vRKqc2KQ", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a variety of dining experiences, showcasing the quality of food, service, ambiance, and value for money. Customers frequently mention their satisfaction with the menu options and the overall atmosphere, while some express concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Value for money", "Wait times", "Menu variety"],
+        "importance": [0.35, 0.25, 0.15, 0.1, 0.1, 0.05]
+    },
+    {
+        "iid": 9, "item_id": "_T0cPZE2ZJOTTlYYKMP64Q", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining options, showcasing unique cuisines and exceptional service. Many reviewers emphasize the quality of food and ambiance, while some mention constraints such as long wait times or limited parking.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Parking availability"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 10, "item_id": "VbItL6RDULtnw4YvB6EhVg", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently comment on the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 11, "item_id": "0CEUpFtaKhxbmrbSdP9MUQ", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a variety of dining experiences, showcasing the quality of food, service, ambiance, and value for money. Many reviewers emphasize the importance of friendly staff and unique menu offerings, while some mention long wait times and high prices as drawbacks.", "features": ["Quality of food", "Service", "Ambiance", "Value for money", "Staff friendliness", "Menu variety", "Wait times", "Price"],
+        "importance": [0.25, 0.2, 0.15, 0.1, 0.1, 0.1, 0.05, 0.05]
+    },
+    {
+        "iid": 12, "item_id": "dChRGpit9fM_kZK5pafNyA", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a variety of dining experiences, showcasing the quality of food, service, and ambiance. Many reviewers emphasize the importance of friendly staff and unique menu offerings, while some mention issues with wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Staff friendliness", "Menu variety", "Wait times", "Pricing"],
+        "importance": [0.25, 0.2, 0.15, 0.15, 0.1, 0.1, 0.05]
+    },
+    {
+        "iid": 13, "item_id": "QWqKTWQ2OiDgo3dzNkpung", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance as key factors influencing their overall satisfaction.", "features": ["Quality of Food", "Service", "Ambiance", "Price", "Location", "Menu Variety"],
+        "importance": [0.35, 0.25, 0.2, 0.1, 0.05, 0.05]
+    },
+    {
+        "iid": 14, "item_id": "7mpYTDb24SywNMRn3yeakQ", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse selection of dining options, showcasing various cuisines and unique atmospheres. Customers frequently mention the quality of food, service, and overall dining experience, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Atmosphere", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 15, "item_id": "5iuo1kvv0XZMS0bUOoLz2Q", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing various cuisines and atmospheres. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 16, "item_id": "bchZXVE4feVx4Q5rhIRCGg", "price": 1.0, "text_description": "The Yelp restaurant reviews highlight a diverse selection of eateries, showcasing a variety of cuisines and dining experiences. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 17, "item_id": "ngvE1G9IckUO-ljZBFo23w", "price": 0, "text_description": "The Yelp restaurant reviews highlight a diverse range of dining experiences, showcasing customer satisfaction with food quality, service, and ambiance. Many reviewers appreciate unique menu items and the overall atmosphere, while some mention issues with wait times and pricing.", "features": ["Food Quality", "Service", "Ambiance", "Menu Variety", "Wait Times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.05, 0.05]
+    },
+    {
+        "iid": 18, "item_id": "46_2e1hnQ4csLrYnhn6bkw", "price": 1.0, "text_description": "The Yelp reviews highlight a diverse selection of restaurants, showcasing a variety of cuisines and dining experiences. Customers frequently mention the quality of food, service, and ambiance, with some expressing concerns about wait times and pricing.", "features": ["Quality of food", "Service", "Ambiance", "Wait times", "Pricing"],
+        "importance": [0.4, 0.3, 0.2, 0.1, 0.1]
+    },
+    {
+        "iid": 19, "item_id": "TGfPJHImEq6AQL9a1laxlg", "price": 1.0, "text_description": "The Yelp reviews highlight a variety of restaurants, showcasing their unique cuisines, ambiance, and service quality. Diners appreciate the diverse menu options and the overall dining experience, though some express concerns about wait times and pricing.", "features": ["Diverse menu options", "Ambiance", "Service quality", "Wait times", "Pricing"],
+        "importance": [0.25, 0.2, 0.3, 0.15, 0.1]
+    }
+]
