@@ -2,14 +2,12 @@
 
 import json
 from collections import defaultdict, Counter
-from utils import get_dset_root, iter_line, dumpj, loadj
-from llm import query_llm, safe_json_extract
-from debug import check
 
-import textwrap
+from .create_profiles import build_user_profiles, build_item_profiles
 
+from utils import load_make, iter_line
 
-def filter_user_item_data():
+def load_yelp_data():
     '''
     retrieve the information from the json files
     '''
@@ -84,7 +82,7 @@ def filter_user_item_data():
         tip = json.loads(line)
         biz_id = tip["business_id"]
         # Add a type identifier
-        if biz_id in all_restaurant_ids:
+        if len(rev['text']) > 200 and biz_id in all_restaurant_ids:
             user_interactions[tip["user_id"]].append(tip['text'])
             
         city = biz_to_city_map.get(biz_id)
@@ -92,217 +90,45 @@ def filter_user_item_data():
             CITYR_dict[city][biz_id]["interactions"].append(tip['text'])
 
     # --- Part 4: Final user filtering based on combined interactions ---
-    # select users with > 50 reviews of > 100 characters
+    # select users with > 50 reviews (of > 200 characters; filtered above)
     USERS = [
         {"user_id": uid, "interactions": interactions}
         for uid, interactions in user_interactions.items()
         if len(interactions) > 50
     ]
 
-    CITYR = []
+    ITEMS = []
     for city, businesses in CITYR_dict.items():
-        city_restaurants = [
-            {"business_id": biz_id, **data}
-            for biz_id, data in businesses.items()
-        ]
-        CITYR.append(city_restaurants)
-
-    return {"USERS": USERS, "CITYR": CITYR}
-
-####################
-### USER PROFILE ###
-####################
-
-# (later use in dynamic) ambiance_noise, ambiance_lighting, crowd_density
-static_feature_descriptives = {
-    "food_quality": ["Inedible or poorly prepared", "Bland or inconsistent", "Generally acceptable taste", "Tasty and well-executed", "Exceptional flavor and preparation"],
-    "portion_size": ["Extremely small or unsatisfying", "Somewhat undersized", "Standard / as expected", "Generous portions", "Very large or extremely generous"],
-    "service_speed": ["Extremely slow or inattentive", "Slower than expected", "Average speed", "Prompt and efficient", "Exceptionally fast and attentive"],
-    "service_attitude": ["Rude or dismissive staff", "Unfriendly or cold", "Neutral or businesslike", "Friendly and courteous", "Exceptionally warm and accommodating"],
-    "cleanliness": ["Dirty or unsanitary", "Below average cleanliness", "Generally clean", "Very clean and tidy", "Immaculate and spotless"],
-    "price_sensitivity": ["Rarely considers price when choosing", "Comfortable paying for better experience", "Balances cost with quality", "Prefers cheaper budget options", "Very sensitive to price changes"]
-}
-
-def format_feature_prompt(user_text, feature_name, spectrum):
-    scale = "\n".join([f"{i-2}. {desc}" for i, desc in enumerate(spectrum)])
-    return f"""
-You are evaluating a restaurant reviewer's preferences.
-
-Below are their recent reviews:
-{textwrap.shorten(user_text, width=6000)}
-
-Now consider the feature: **{feature_name}**
-
-Rate this user's preference or expectation on the following -2 to +2 scale:
-{scale}
-
-Return only a single float value from -2 to 2.
-"""
-
-def format_description_and_dynamic_prompt(user_text):
-    return f"""
-Based on the following restaurant reviews:
-
-{textwrap.shorten(user_text, width=6000)}
-
-Generate:
-1. A short summary (1–2 sentences) of the user's restaurant preferences and habits.
-2. A list of any notable preferences, special requests, or constraints — e.g. vegetarian, outdoor seating, kid-friendly, allergy-conscious, etc.
-
-Return valid JSON:
-{{
-  "text_description": str,
-  "dynamic_preferences": [str]
-}}
-"""
-
-def build_user_profile(USERS, model="openai"):
-    '''
-    read user reviews (USERS) to create 
-    preference vector + budget, price-sensivity (usually inverse)
-    text descriptions profile summary
-    record special request into dynamic feature pool;
-    '''
-
-    profiles = []
-
-    for user in tqdm(USERS, ncols=90, desc="Building user profiles"):
-        text = "\n".join(user["interactions"])  # [:20] limit to ~20 reviews
-        preference_vector = []
-
-        for feature, descriptions in static_feature_descriptives.items():
-            response = query_llm(format_feature_prompt(user_text, feature_name, descriptions), model=model).strip()
-            score = max(-1.0, min(1.0, float(response)/2))
-            preference_vector.append(score)
-
-        ## budget and price sensitivity
-        price_sensitivity = preference_vector.pop(-1)
-
-        extra_data = safe_json_extract(format_description_and_dynamic_prompt(user_text), model=model)
-        summary = extra_data.get("text_description", "")
-        dynamic_preferences = extra_data.get("dynamic_preferences", [])
-
-        profile = {
-            "user_id": user["user_id"],
-            "preference_vector": preference_vector,
-            "price_sensitivity": price_sensitivity,
-            "text_description": summary,
-            "dynamic_preferences": dynamic_preferences
-        }
-
-        profiles.append(profile)
-
-    return profiles
-
-####################
-### ITEM PROFILE ###
-####################
- 
-static_feature_descriptives_item = {
-    "food_quality": ["Inedible or poorly prepared", "Bland or inconsistent", "Generally acceptable taste", "Tasty and well-executed", "Exceptional flavor and preparation"],
-    "portion_size": ["Extremely small or unsatisfying", "Somewhat undersized", "Standard / as expected", "Generous portions", "Very large or extremely generous"],
-    "service_speed": ["Extremely slow or inattentive", "Slower than expected", "Average speed", "Prompt and efficient", "Exceptionally fast and attentive"],
-    "service_attitude": ["Rude or dismissive staff", "Unfriendly or cold", "Neutral or businesslike", "Friendly and courteous", "Exceptionally warm and accommodating"],
-    "cleanliness": ["Dirty or unsanitary", "Below average cleanliness", "Generally clean", "Very clean and tidy", "Immaculate and spotless"],
-    "cost": ["Extremely cheap or budget-friendly", "Below average pricing", "Moderately priced / mid-range", "High-end or premium pricing", "Very expensive or luxury-level"]
-}
- 
-def format_feature_prompt_item(restaurant_reviews, feature_name, spectrum):
-    scale = "\n".join([f"{i-2}. {desc}" for i, desc in enumerate(spectrum)])
-    return f"""
-You are evaluating customer's reviews to a restaurant.
- 
-Below are their recent reviews:
-{textwrap.shorten(restaurant_reviews, width=6000)}
- 
-Now consider the feature: **{feature_name}**
- 
-Rate this restaurant's feature on the following -2 to +2 scale:
-{scale}
- 
-Return only a single float value from -2 to 2.
-"""
- 
-def format_description_and_dynamic_prompt_item(restaurant_reviews):
-    return f"""
-Based on the following restaurant reviews:
- 
-{textwrap.shorten(restaurant_reviews, width=6000)}
- 
-Generate:
-1. A short summary (1–2 sentences) describing the restaurant’s overall qualities, strengths, and customer appeal.
-2. A list of any notable features, offerings, or characteristics — e.g. vegetarian options, outdoor seating, kid-friendly atmosphere, allergy-conscious menu, etc.
- 
-Return valid JSON:
-{{
-  "text_description": str,
-  "dynamic_preferences": [str]
-}}
-"""
-
- 
-def build_item_profile(CITYR, model="openai"):
-    '''
-    read item reviews (CITYR) to create 
-    feature vector + cost
-    text descriptions profile summary
-    record special features into dynamic feature pool;
-    '''
- 
-    # collect restaurants
-    restaurants = []
-    for city, bizs in CITYR.items():
-        for biz_id, biz_data in bizs.items():
-            restaurants.append({
-                'biz_id': biz_id,
-                'biz_data': biz_data
+        for biz_id, data in businesses.items():
+            ITEMS.append({
+                "business_id": biz_id,
+                "city": city,
+                **data  # includes info and interactions
             })
-    # create profiles
-    profiles = []
-    for restaurant in tqdm(restaurants, ncols=90, desc="Building item profiles"):
-        restaurant_reviews = "\n".join(restaurant['biz_data']['interactions'])
-        preference_vector = []
- 
-        for feature_name, descriptions in static_feature_descriptives_item.items():
-            response = query_llm(format_feature_prompt_item(restaurant_reviews, feature_name, descriptions), model=model).strip()
-            score = max(-1.0, min(1.0, float(response)/2))
-            preference_vector.append(score)
- 
-        ## budget and price sensitivity
-        cost = preference_vector.pop(-1)
- 
-        extra_data = safe_json_extract(format_description_and_dynamic_prompt_item(restaurant_reviews), model=model)
-        summary = extra_data.get("text_description", "")
-        dynamic_preferences = extra_data.get("dynamic_preferences", [])
- 
-        profile = {
-            "item_id": restaurant["biz_id"],
-            "preference_vector": preference_vector,
-            "cost": cost,
-            "text_description": summary,
-            "dynamic_preferences": dynamic_preferences
-        }
- 
-        profiles.append(profile)
- 
-    return profiles
- 
+
+    return {"USERS": USERS, "ITEMS": ITEMS}
+
+
 def main():
+    # collect data (no LLM)
     cache_dir = Path("cache")
     cache_dir.mkdir(exist_ok=True)
- 
-    user_item_path = cache_dir / "user_and_item_data.json"
-    user_item_data = load_make(user_item_path, filter_user_item_data)
- 
-    USERS = user_item_data["USERS"]
-    CITYR = user_item_data["CITYR"]
- 
+    data_path = cache_dir / "yelp_data.json"
+    data = load_make(data_path, load_yelp_data)
+
+    # create user profile (with LLM)
+    USERS = data["USERS"]
+    ITEMS = data["ITEMS"]
+    domain_name = 'Yelp restaurants'
     user_profile_path = cache_dir / "user_profile.json"
     item_profile_path = cache_dir / "item_profile.json"
- 
-    user_profile = load_make(user_profile_path, lambda: build_user_profile(USERS))
-    item_profile = load_make(item_profile_path, lambda: build_item_profile(CITYR))
+    build_yelp_user_profile = lambda: build_user_profiles(USERS, domain_name)
+    build_yelp_item_profile = lambda: build_item_profiles(ITEMS, domain_name)
 
+    user_profile = load_make(user_profile_path, build_yelp_user_profile)
+    item_profile = load_make(item_profile_path, build_yelp_item_profile)
+
+    # finalize combination and ground truth setting
 
 
 if __name__ == '__main__':
