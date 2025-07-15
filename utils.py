@@ -55,8 +55,10 @@ def iter_line(filepath, total=None):
 
 def load_make(path, build_fn, cache_fn=dumpj):
     if path.exists():
+        print(f'{path} exists, loading...')
         return loadj(path)
     else:
+        print(f'{path} do not exists, building...')
         result = build_fn()
         cache_fn(path, result)
         return result

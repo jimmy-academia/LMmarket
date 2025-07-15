@@ -1,4 +1,6 @@
-**/.openai_key
+**/cache
+
+**/.openaiapi_key
 **/.dset_root
 
 # Byte-compiled / optimized / DLL files

@@ -1,9 +1,11 @@
+## create_profiles.py
+
 from .prompts import price_sensitivity_prompt, preference_prompt, price_estimate_prompt, feature_prompt
 from llm import query_llm, safe_json_extract
 
 from tqdm import tqdm
 
-def build_user_profile(USERS, domain, model="openai"):
+def build_user_profiles(USERS, domain, model="openai"):
     '''
     Create user profile (with LLM)
     - budget -- price-sensitivity (inverse)
@@ -28,7 +30,7 @@ def build_user_profile(USERS, domain, model="openai"):
             "user_id": user["user_id"],
             "price_sensitivity": price_sensitivity,
             "text_description": extra.get("text_description", ""),
-            "preferences": extra.get("preferences", [])
+            "preferences": extra.get("preferences", []),
             "importance": extra.get("importance", [])
         }
         profiles.append(profile)
@@ -37,7 +39,7 @@ def build_user_profile(USERS, domain, model="openai"):
     return profiles
 
 
-def build_item_profile(ITEMS, domain, model="openai"):
+def build_item_profiles(ITEMS, domain, model="openai"):
 
     '''
     Create item profile (with LLM)
@@ -48,7 +50,7 @@ def build_item_profile(ITEMS, domain, model="openai"):
 
     profiles = []
     iid = 0
-    desc = "BUilding item profiles for "+domain
+    desc = "Building item profiles for "+domain
     for item in tqdm(ITEMS, ncols=90, desc=desc):
         item_text = str(item["info"])+ "\n".join(item["interactions"])
 
@@ -60,10 +62,10 @@ def build_item_profile(ITEMS, domain, model="openai"):
         extra = safe_json_extract(prompt, model=model)
         profile = {
             "iid" : iid, 
-            "item_id": item["biz_id"],
+            "item_id": item["business_id"],
             "price": price,
             "text_description": extra.get("text_description", ""),
-            "features": extra.get("features", [])
+            "features": extra.get("features", []),
             "importance": extra.get("importance", [])
         }
         profiles.append(profile)

@@ -64,9 +64,9 @@ You are analyzing reviews for a {domain} item.
 Below are the recent customer reviews:
 {textwrap.shorten(item_text, width=max_character_width)}
 
-Estimate how expensive this item is based on the reviews.
+Now consider: the item's pricing_level
 
-Use the following scale from 0 to 4: {scale}
+Rate this item's pricing_level on a 0 to 4 scale: {scale}
 
 Return only a single float value from 0 to 4.
 """.strip()

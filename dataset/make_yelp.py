@@ -1,11 +1,12 @@
 # python -m dataset.make_yelp
 
 import json
+from pathlib import Path
 from collections import defaultdict, Counter
 
 from .create_profiles import build_user_profiles, build_item_profiles
 
-from utils import load_make, iter_line
+from utils import get_dset_root, load_make, iter_line
 
 def load_yelp_data():
     '''
@@ -108,8 +109,16 @@ def load_yelp_data():
 
     return {"USERS": USERS, "ITEMS": ITEMS}
 
+import argparse
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sample', action='store_true', help="Use a small sample dataset")
+    args = parser.parse_args()
+    
+    if args.sample:
+        print("⚠️  Running in SAMPLE mode: using 20 users and 20 items")
+
     # collect data (no LLM)
     cache_dir = Path("cache")
     cache_dir.mkdir(exist_ok=True)
@@ -120,8 +129,15 @@ def main():
     USERS = data["USERS"]
     ITEMS = data["ITEMS"]
     domain_name = 'Yelp restaurants'
-    user_profile_path = cache_dir / "user_profile.json"
-    item_profile_path = cache_dir / "item_profile.json"
+
+    suffix = "_sample.json" if args.sample else ".json"
+    user_profile_path = cache_dir / f"user_profile{suffix}"
+    item_profile_path = cache_dir / f"item_profile{suffix}"
+
+    if args.sample:
+        USERS = USERS[:20]
+        ITEMS = ITEMS[:20]
+
     build_yelp_user_profile = lambda: build_user_profiles(USERS, domain_name)
     build_yelp_item_profile = lambda: build_item_profiles(ITEMS, domain_name)
 
