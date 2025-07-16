@@ -111,6 +111,7 @@ def load_yelp_data():
 
 import argparse
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--sample', action='store_true', help="Use a small sample dataset")
