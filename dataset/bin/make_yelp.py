@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from collections import defaultdict, Counter
 
+from .build_features import build_ontology_by_reviews
 from .create_profiles import build_user_profiles, build_item_profiles
 
 from utils import get_dset_root, load_make, iter_line
@@ -120,32 +121,35 @@ def main():
     if args.sample:
         print("⚠️  Running in SAMPLE mode: using 20 users and 20 items")
 
-    # collect data (no LLM)
+    # 1. collect data (no LLM)
     cache_dir = Path("cache")
     cache_dir.mkdir(exist_ok=True)
     data_path = cache_dir / "yelp_data.json"
     data = load_make(data_path, load_yelp_data)
-
-    # create user profile (with LLM)
+    
     USERS = data["USERS"]
     ITEMS = data["ITEMS"]
-    domain_name = 'Yelp restaurants'
-
-    suffix = "_sample.json" if args.sample else ".json"
-    user_profile_path = cache_dir / f"user_profile{suffix}"
-    item_profile_path = cache_dir / f"item_profile{suffix}"
-
     if args.sample:
         USERS = USERS[:20]
         ITEMS = ITEMS[:20]
+    domain_name = 'Yelp restaurants'
 
-    build_yelp_user_profile = lambda: build_user_profiles(USERS, domain_name)
-    build_yelp_item_profile = lambda: build_item_profiles(ITEMS, domain_name)
+    # 2. construct feature ontology (with LLM)
+    feature_graph = build_ontology_by_reviews(USERS, domain_name)
 
-    user_profile = load_make(user_profile_path, build_yelp_user_profile)
-    item_profile = load_make(item_profile_path, build_yelp_item_profile)
+    # 3. final user profile, user request, and item profile
 
-    # finalize combination and ground truth setting
+    # suffix = "_sample.json" if args.sample else ".json"
+    # user_profile_path = cache_dir / f"user_profile{suffix}"
+    # item_profile_path = cache_dir / f"item_profile{suffix}"
+
+    
+    # build_yelp_user_profile = lambda: build_user_profiles(USERS, feature_graph)
+    # build_yelp_item_profile = lambda: build_item_profiles(ITEMS, feature_graph)
+
+    # user_profile = load_make(user_profile_path, build_yelp_user_profile)
+    # item_profile = load_make(item_profile_path, build_yelp_item_profile)
+
 
 
 if __name__ == '__main__':
