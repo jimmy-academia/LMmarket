@@ -58,7 +58,11 @@ def load_make(path, build_fn, cache_fn=dumpj):
         print(f'{path} exists, loading...')
         return loadj(path)
     else:
-        print(f'{path} do not exists, building...')
+        print(f' [load_make] >>> {path} do not exists, building...')
         result = build_fn()
+        print(f' [load_make] >>> saving build result to {path}...')
         cache_fn(path, result)
+        print(f' [load_make] >>> saving complete.')
         return result
+
+        

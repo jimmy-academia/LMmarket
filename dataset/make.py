@@ -1,35 +1,41 @@
 ## python -m dataset.make --sample --dset yelp
 ## python -m dataset.make --sample
 
-from yelp import load_yelp_data
-import argparse
+from pathlib import Path
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--sample', action='store_true', help="Use a small sample dataset")
-    parser.add_argument('--dset', type=str, default='yelp')
-    args = parser.parse_args()
+from utils import load_make
+from .yelp import load_yelp_data
+from .build_features import build_ontology_by_reviews
+
+def main(args):
     
     print(f"making dataset: {args.dset}")
-    if args.sample:
-        print("⚠️  Running in SAMPLE mode: using 20 users and 20 items")
-
+    
     # 1. collect data (no LLM)
     cache_dir = Path("cache")
     cache_dir.mkdir(exist_ok=True)
-    data_path = cache_dir / "yelp_data.json"
-    data = load_make(data_path, load_yelp_data)
+    if args.dset == 'yelp':
+        data_path = cache_dir / "yelp_data.json"
+        data = load_make(data_path, load_yelp_data)
+        print('load or created', data_path)
+    else:
+        input(f"{args.dset} not implemented yet!")
     
-USERS = data["USERS"]
-ITEMS = data["ITEMS"]
-REVIEWS = data["REVIEWS"]
-if args.sample:
-    USERS = USERS[:20]
-    ITEMS = ITEMS[:20]
-    # REVIEWS = reviews made by the users and made to the items   
+    if args.sample:
+        print("⚠️  Running in SAMPLE mode: using 20 users and 20 items")
+    
+    USERS = data["USERS"]
+    ITEMS = data["ITEMS"]
+    REVIEWS = data["REVIEWS"]
+    if args.sample:
+        USERS = USERS[:20]
+        ITEMS = ITEMS[:20]
+        used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
+                          {rid for i in ITEMS for rid in i["review_ids"]}
+        REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
 
     # 2. construct feature ontology (with LLM)
-    feature_graph = build_ontology_by_reviews(USERS, domain_name)
+    output = build_ontology_by_reviews(args, REVIEWS)
 
     # 3. final user profile, user request, and item profile
 
