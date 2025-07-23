@@ -21,50 +21,112 @@ def embed(text: str) -> np.ndarray:
 def cosine(a, b):
     return float(csim(a.reshape(1, -1), b.reshape(1, -1))[0][0])
 
-
 def clean_phrase(phrase: str) -> str:
     return phrase.lower().strip("* ").split(". ")[-1].strip()
 
 ### --- Ontology Node and Ontology Structure --- ###
 
 class OntologyNode:
-    def __init__(self, name: str, description: str, score: float, review_id: str, emb):
+    def __init__(self, node_id, name, description, embedding):
+        self.node_id = node_id
         self.name = name
         self.description = description
         self.aliases = {name}
-        self.examples = [(review_id, name, score)]
-        self.embedding = emb
-        self.cluster_id = None
-        self.entailments = set()
+        self.embedding = embedding
+        self.children = {}
+        self.parent = None
 
-    def update(self, alias: str, score: float, review_id: str):
-        cleaned = clean_phrase(alias)
-        self.aliases.add(cleaned)
-        self.examples.append((review_id, cleaned, score))
+    def update(self, alias: str):
+        self.aliases.add(alias)
 
     def __repr__(self):
-        return f"OntologyNode(name='{self.name}', description='{self.description}', aliases={self.aliases})"
+        return f"OntologyNode(name='{self.name}',\ndescription='{self.description}',\naliases={self.aliases})\n"
 
 
 class Ontology:
     def __init__(self):
-        self.nodes: Dict[str, OntologyNode] = {}
+        self.nodes = {}
+        self.review2node_id_score = defaultdict(list)
 
-    def add_or_update_node(self, phrase: str, description: str, score: float, review_id: str, threshold: float = 0.94):
+    def add_or_update_node(self, review_id, phrase, description, score):
         cleaned = clean_phrase(phrase)
-        emb = embed(description)
-        best_node, best_score = None, -1
-        for node in self.nodes.values():
-            sim = cosine(emb, node.embedding)
-            if sim > best_score:
-                best_score, best_node = sim, node
 
-        if best_score > threshold:
-            best_node.update(cleaned, score, review_id)
-        elif cleaned in self.nodes:
-            self.nodes[cleaned].update(cleaned, score, review_id)
-        else:
-            self.nodes[cleaned] = OntologyNode(cleaned, description, score, review_id, emb)
+        for node in self.nodes.values():
+            if cleaned in node.aliases:
+                self.review2node_id_score[review_id].append((node.node_id, score))
+                print(f"Feature '{cleaned}' matched existing alias in node '{node.name}'")
+                return
+
+        top_candidates = self.search_top_ten(description)
+        if top_candidates:
+            candidates_text = "\n".join([f"{node.name}: {node.description}" for _, node in top_candidates])
+            prompt = f"""
+A new feature has been extracted from a review:
+
+New Feature Name: {cleaned}
+New Feature Definition: {description}
+
+Below are existing features:
+{candidates_text}
+
+Decide the best relationship for the new feature:
+- If it's a near synonym or alternative wording of an existing one, return: ALIAS: <existing name>
+- If it's a more specific case of an existing feature, return: CHILD: <existing name>
+- If it's a more general feature that should subsume an existing one, return: PARENT: <existing name>
+- If no relationship, return: NEW
+"""
+            decision = query_llm(prompt).strip()
+            print(f"Decision for '{cleaned}': {decision}")
+
+            if decision.startswith("ALIAS:"):
+                target = decision.split(":", 1)[1].strip()
+                if target in self.nodes:
+                    self.nodes[target].update(cleaned)
+                    self.review2node_id_score[review_id].append((target, score))
+                    print(f"'{cleaned}' added as ALIAS to '{target}'")
+                    input('pause')
+                    return
+
+            elif decision.startswith("CHILD:"):
+                parent = decision.split(":", 1)[1].strip()
+                if parent in self.nodes:
+                    node_id = cleaned
+                    new_node = OntologyNode(node_id, cleaned, description, embed(cleaned))
+                    new_node.parent = parent
+                    self.nodes[parent].children[node_id] = new_node
+                    self.nodes[node_id] = new_node
+                    self.review2node_id_score[review_id].append((node_id, score))
+                    print(f"'{cleaned}' added as CHILD to '{parent}'")
+                    input('pause')
+                    return
+
+            elif decision.startswith("PARENT:"):
+                child = decision.split(":", 1)[1].strip()
+                if child in self.nodes:
+                    node_id = cleaned
+                    new_node = OntologyNode(node_id, cleaned, description, embed(cleaned))
+                    new_node.children[child] = self.nodes[child]
+                    self.nodes[child].parent = node_id
+                    self.nodes[node_id] = new_node
+                    self.review2node_id_score[review_id].append((node_id, score))
+                    print(f"'{cleaned}' added as PARENT to '{child}'")
+                    input('pause')
+                    return
+
+        node_id = cleaned
+        self.nodes[node_id] = OntologyNode(node_id, cleaned, description, embed(cleaned))
+        self.review2node_id_score[review_id].append((node_id, score))
+        print(f"'{cleaned}' added as NEW node")
+        input('pause')
+
+    def search_top_ten(self, query_text, top_k=10):
+        query_vec = embed(query_text)
+        scored = []
+        for node_id, node in self.nodes.items():
+            sim = cosine(query_vec, node.embedding)
+            scored.append((sim, node))
+        scored.sort(reverse=True, key=lambda x: x[0])
+        return [node for node in scored[:top_k]]
 
     def to_dict(self):
         return {
@@ -72,9 +134,8 @@ class Ontology:
                 "name": n.name,
                 "description": n.description,
                 "aliases": list(n.aliases),
-                "examples": n.examples,
-                "entailments": list(n.entailments),
-                "cluster_id": n.cluster_id,
+                "children": list(n.children.keys()),
+                "parent": n.parent,
             } for name, n in self.nodes.items()
         }
 
@@ -104,7 +165,6 @@ class Ontology:
                     sim = cosine(self.nodes[names[i]].embedding, self.nodes[names[j]].embedding)
                     if sim > threshold:
                         self.nodes[names[i]].entailments.add(names[j])
-
 
 ### --- Feature + Sentiment Extraction --- ###
 
@@ -144,7 +204,6 @@ Review:
 Output format:
 feature name | definition | score (float between -1.0 and 1.0)
 
-
 """
 
     response = query_llm(prompt, model=model)
@@ -171,15 +230,23 @@ def build_ontology_by_reviews(args, reviews: List[Dict]) -> Ontology:
     count = 0
     for r in reviews:
         review_id, text = r["review_id"], r["text"]
-        print(text)
+        print("\n" + "="*60)
+        print(f"Review: {text}")
         feature_scores = extract_feature_mentions(text, ontology, args.dset)
-        print(feature_scores)
+        print(f"Extracted Features: {feature_scores}")
 
         for phrase, description, score in feature_scores:
-            ontology.add_or_update_node(phrase, description, score, review_id)
+            phrase = clean_phrase(phrase)
+            ontology.add_or_update_node(review_id, phrase, description, score)
+
+        print("\nOntology after processing this review:")
+        for node_id, node in ontology.nodes.items():
+            print(f"- {node_id}: {node}")
+
+        input("[Review Complete] Press Enter to continue...\n")
 
         count += 1
-        if count == 5:
+        if count == 50:
             check()
 
     ontology.cluster_features()
