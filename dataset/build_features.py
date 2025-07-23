@@ -6,10 +6,17 @@ import json
 import logging
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity as csim
-from utils import readf
+from utils import readf, vprint, pause_if
+from functools import partial
 
 from llm import query_llm
 from debug import check
+
+### --- Flags --- ###
+VERBOSE = True
+PAUSE = False
+vlog = partial(vprint, flag=VERBOSE)
+ppause = partial(pause_if, flag=PAUSE)
 
 ### --- Embedding Setup --- ###
 
@@ -40,8 +47,18 @@ class OntologyNode:
         self.aliases.add(alias)
 
     def __repr__(self):
-        return f"OntologyNode(name='{self.name}',\ndescription='{self.description}',\naliases={self.aliases})\n"
+        parent_str = f"\nparent='{self.parent.name}'" if self.parent else ""
+        child_str = ""
+        if self.children:
+            child_str = "\nchildren=[" + ", ".join([child for child in self.children]) + "]"
 
+        return (
+            f"OntologyNode(name='{self.name}',"
+            f"\ndescription='{self.description}',"
+            f"\naliases={self.aliases}"
+            f"{parent_str}"
+            f"{child_str})\n"
+        )
 
 class Ontology:
     def __init__(self):
@@ -54,7 +71,8 @@ class Ontology:
         for node in self.nodes.values():
             if cleaned in node.aliases:
                 self.review2node_id_score[review_id].append((node.node_id, score))
-                print(f"Feature '{cleaned}' matched existing alias in node '{node.name}'")
+                vlog(f"Feature '{cleaned}' matched existing alias in node '{node.name}'")
+                ppause()
                 return
 
         top_candidates = self.search_top_ten(description)
@@ -76,15 +94,15 @@ Decide the best relationship for the new feature:
 - If no relationship, return: NEW
 """
             decision = query_llm(prompt).strip()
-            print(f"Decision for '{cleaned}': {decision}")
+            vlog(f"Decision for '{cleaned}': {decision}")
 
             if decision.startswith("ALIAS:"):
                 target = decision.split(":", 1)[1].strip()
                 if target in self.nodes:
                     self.nodes[target].update(cleaned)
                     self.review2node_id_score[review_id].append((target, score))
-                    print(f"'{cleaned}' added as ALIAS to '{target}'")
-                    input('pause')
+                    vlog(f"'{cleaned}' added as ALIAS to '{target}'")
+                    ppause()
                     return
 
             elif decision.startswith("CHILD:"):
@@ -92,12 +110,12 @@ Decide the best relationship for the new feature:
                 if parent in self.nodes:
                     node_id = cleaned
                     new_node = OntologyNode(node_id, cleaned, description, embed(cleaned))
-                    new_node.parent = parent
-                    self.nodes[parent].children[node_id] = new_node
+                    new_node.parent = self.nodes[parent]
+                    self.nodes[parent].children[cleaned] = new_node
                     self.nodes[node_id] = new_node
                     self.review2node_id_score[review_id].append((node_id, score))
-                    print(f"'{cleaned}' added as CHILD to '{parent}'")
-                    input('pause')
+                    vlog(f"'{cleaned}' added as CHILD to '{parent}'")
+                    ppause()
                     return
 
             elif decision.startswith("PARENT:"):
@@ -106,18 +124,18 @@ Decide the best relationship for the new feature:
                     node_id = cleaned
                     new_node = OntologyNode(node_id, cleaned, description, embed(cleaned))
                     new_node.children[child] = self.nodes[child]
-                    self.nodes[child].parent = node_id
+                    self.nodes[child].parent = new_node
                     self.nodes[node_id] = new_node
                     self.review2node_id_score[review_id].append((node_id, score))
-                    print(f"'{cleaned}' added as PARENT to '{child}'")
-                    input('pause')
+                    vlog(f"'{cleaned}' added as PARENT to '{child}'")
+                    ppause()
                     return
 
         node_id = cleaned
         self.nodes[node_id] = OntologyNode(node_id, cleaned, description, embed(cleaned))
         self.review2node_id_score[review_id].append((node_id, score))
-        print(f"'{cleaned}' added as NEW node")
-        input('pause')
+        vlog(f"'{cleaned}' added as NEW node")
+        ppause()
 
     def search_top_ten(self, query_text, top_k=10):
         query_vec = embed(query_text)
@@ -225,25 +243,27 @@ feature name | definition | score (float between -1.0 and 1.0)
 
 def build_ontology_by_reviews(args, reviews: List[Dict]) -> Ontology:
     ontology = Ontology()
-    print('ontology class initialized')
+    vlog('ontology class initialized')
 
     count = 0
     for r in reviews:
         review_id, text = r["review_id"], r["text"]
-        print("\n" + "="*60)
-        print(f"Review: {text}")
+        vlog("\n" + "="*60)
+        vlog(f"Review: {text}")
         feature_scores = extract_feature_mentions(text, ontology, args.dset)
-        print(f"Extracted Features: {feature_scores}")
+        vlog(f"Extracted Features: {feature_scores}")
 
         for phrase, description, score in feature_scores:
             phrase = clean_phrase(phrase)
             ontology.add_or_update_node(review_id, phrase, description, score)
 
-        print("\nOntology after processing this review:")
-        for node_id, node in ontology.nodes.items():
-            print(f"- {node_id}: {node}")
+        vlog("\nOntology after processing this review:")
+        if VERBOSE:
+            for node_id, node in ontology.nodes.items():
+                print(f"- {node_id}: {node}")
 
-        input("[Review Complete] Press Enter to continue...\n")
+        vlog("[Review Complete] Press Enter to continue...\n")
+        ppause()
 
         count += 1
         if count == 50:

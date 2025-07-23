@@ -12,7 +12,7 @@ def get_openai_client():
     return openai_client
 
 
-def query_llm(prompt, model="openai", temperature=0.3):
+def query_llm(prompt, model="openai", temperature=0.1):
 
     if model == "openai":
         client = get_openai_client()
@@ -24,7 +24,7 @@ def query_llm(prompt, model="openai", temperature=0.3):
         # Create the message format expected by chat completion
         messages = [{"role": "user", "content": prompt}]
         response = client.chat.completions.create(
-            model="gpt-4o-mini", 
+            model="gpt-4.1-mini", #"gpt-4o-mini", 
             messages=messages,
             temperature=temperature,
         )

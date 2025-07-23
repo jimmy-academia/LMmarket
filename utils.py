@@ -66,3 +66,10 @@ def load_make(path, build_fn, cache_fn=dumpj):
         return result
 
         
+def vprint(msg, flag=True):
+    if flag:
+        print(msg)
+
+def pause_if(flag=True, msg="Press Enter to continue..."):
+    if flag:
+        input(msg)
