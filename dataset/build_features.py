@@ -249,7 +249,7 @@ Existing candidates:
 def clean_phrase(phrase):
     return phrase.lower().strip("* ").split(". ")[-1].strip()
 
-def extract_feature_mentions(text: str, ontology: Ontology = None, dset = None, model="openai"):
+def extract_feature_mentions(text, ontology=None, dset = None, model="openai"):
     hints = ontology.feature_hints() if ontology else []
     hint_str = f"Known features to look for include: {', '.join(hints)}." if hints else ""
 
@@ -306,30 +306,46 @@ feature name | definition | score (float between -1.0 and 1.0)
 ### --- Main Ontology Building Function --- ###
 
 def build_ontology_by_reviews(args, reviews):
+
+    feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
     ontology = Ontology()
-    vlog('ontology class initialized')
 
-    count = 0
-    for r in reviews:
-        review_id, text = r["review_id"], r["text"]
-        vlog("\n" + "="*60)
-        vlog(f"Review: {text}")
-        feature_scores = extract_feature_mentions(text, ontology, args.dset)
-        vlog(f"Extracted Features: {feature_scores}")
+    if feature_cache_path.exists():
+        feature_data = loadj(feature_cache_path)
 
-        for phrase, description, score in feature_scores:
-            phrase = clean_phrase(phrase)
-            ontology.add_or_update_node(review_id, phrase, description, score)
+        for review_id, feature_scores in feature_data:
+            for phrase, description, score in feature_scores:
+                phrase = clean_phrase(phrase)
+                ontology.add_or_update_node(review_id, phrase, description, score)
 
-        vlog("\nOntology after processing this review:")
-        if VERBOSE:
-            print(ontology)
+    else:
+        feature_data = []
+        vlog('ontology class initialized')
 
-        ppause('finished 1 review')
+        count = 0
+        for r in reviews:
+            review_id, text = r["review_id"], r["text"]
+            vlog("\n" + "="*60)
+            vlog(f"Review: {text}")
+            feature_scores = extract_feature_mentions(text, ontology, args.dset)
+            vlog(f"Extracted Features: {feature_scores}")
+            feature_data.append([review_id, feature_scores])
 
-        count += 1
-        if count == 50:
-            check()
+            for phrase, description, score in feature_scores:
+                phrase = clean_phrase(phrase)
+                ontology.add_or_update_node(review_id, phrase, description, score)
+
+            vlog("\nOntology after processing this review:")
+            if VERBOSE:
+                print(ontology)
+
+            dumpj(feature_cache_path, feature_data)
+
+            # ppause('finished 1 review')
+
+            count += 1
+            if count == 50:
+                check()
 
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
