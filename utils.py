@@ -70,6 +70,6 @@ def vprint(msg, flag=True):
     if flag:
         print(msg)
 
-def pause_if(flag=True, msg="Press Enter to continue..."):
+def pause_if(msg="Press Enter to continue...", flag=True):
     if flag:
         input(msg)
