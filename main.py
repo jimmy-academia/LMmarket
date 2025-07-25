@@ -16,7 +16,4 @@ def main():
 
 
 if __name__ == "__main__":
-    print('do this: separate finish all extract_feature_mentions and cache')
-    print('https://chatgpt.com/g/g-p-686d46da9dd0819180e8ab3240a7ee58-new-llm-market/c/6882a278-a874-8332-b8c9-bd94748ab513')
-    input('wait')
     main()
