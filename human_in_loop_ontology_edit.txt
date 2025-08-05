@@ -1,0 +1,23 @@
+wait time
+food quality
+staff professionalism
+food variety
+staff friendliness
+dining atmosphere
+beverage selection
+portion size
+staff interaction
+staff availability
+staff accuracy
+====
+wait time
+food quality
+staff professionalism
+    staff accuracy
+    staff availability
+    staff interaction
+    staff friendliness
+portion size
+food variety
+    beverage selection
+dining atmosphere

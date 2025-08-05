@@ -1,7 +1,7 @@
 import re
 import json
 from pathlib import Path
-
+from functools import partial
 from tqdm import tqdm
 
 def readf(path):
@@ -73,3 +73,12 @@ def vprint(msg, flag=True):
 def pause_if(msg="Press Enter to continue...", flag=True):
     if flag:
         input(msg)
+
+### --- Flags --- ###
+VERBOSE = True
+PAUSE = True
+vlog = partial(vprint, flag=VERBOSE)
+ppause = partial(pause_if, flag=PAUSE)
+
+def clean_phrase(phrase):
+    return phrase.lower().strip("* ").split(". ")[-1].strip()
