@@ -1,4 +1,4 @@
-wait time
+wait time   wait_time
 food quality
 staff professionalism
 food variety
@@ -10,13 +10,12 @@ staff interaction
 staff availability
 staff accuracy
 ====
-wait time
+wait_time
 food quality
 staff professionalism
     staff accuracy
-    staff availability
-    staff interaction
     staff friendliness
+        staff availability, staff interaction
 portion size
 food variety
     beverage selection
