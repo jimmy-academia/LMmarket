@@ -4,10 +4,10 @@ from utils import clean_phrase
 from utils import dumpj
 
 class OntologyNode:
-    def __init__(self, name, description):
+    def __init__(self, name, aliases, description):
         self.name = name
         self.description = description
-        self.aliases = {name}
+        self.aliases = aliases
         self.children = []
         self.parent = None
 
@@ -84,17 +84,18 @@ class Ontology:
                 break
             parts = line.split("\t")
             raw = parts[0]
-            new = parts[1] if len(parts) > 1 else raw
+            new = parts[1] if len(parts) > 1 else raw # default to raw if no new name provided
             raw_to_name[raw] = new
 
         # 3. Update ontology nodes
         for raw, new in raw_to_name.items():
             existing_node = next((n for n in self.nodes if n.name == new), None)
+            # if edited name exists, add raw as an alias
             if existing_node:
                 if raw not in existing_node.aliases:
-                    existing_node.aliases.append(raw)
+                    existing_node.aliases.append(raw) # add raw as an alias 
             else:
-                new_node = OntologyNode(name=new, aliases=[raw], description="")
+                new_node = OntologyNode(name=new, aliases=set([new, raw]), description="")
                 self.nodes.append(new_node)
                 self.roots.append(new_node)
 
@@ -191,5 +192,4 @@ class Ontology:
         for root in self.roots:
             lines.extend(render_node(root))
         return "\n".join(lines)
-
 

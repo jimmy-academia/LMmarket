@@ -2,6 +2,7 @@
 ## python -m dataset.make --sample
 
 from pathlib import Path
+import argparse
 
 from utils import load_make
 from .yelp import load_yelp_data
@@ -53,4 +54,8 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sample', action='store_true', help='Use sample mode')
+    parser.add_argument('--dset', type=str, default='yelp', help='Dataset name')
+    args = parser.parse_args()
+    main(args)

@@ -5,6 +5,7 @@ from utils import vlog, ppause
 from utils import readf
 from utils import dumpj, loadj
 from utils import clean_phrase
+from utils import VERBOSE
 
 from llm import query_llm
 from debug import check
@@ -69,7 +70,7 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def process_feature_data(ontology, reviews):
+def process_feature_data(args, ontology: Ontology, reviews):
     feature_data = []
     vlog('ontology class initialized')
 
@@ -103,6 +104,7 @@ def build_ontology_by_reviews(args, reviews):
     feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
     ontology = Ontology()
 
+    # Already processed features using llm?
     if feature_cache_path.exists():
         feature_data = loadj(feature_cache_path)
 
@@ -112,7 +114,7 @@ def build_ontology_by_reviews(args, reviews):
                 ontology.add_or_update_node(review_id, phrase, description, score)
 
     else:
-        feature_data = process_feature_data(ontology, reviews)
+        feature_data = process_feature_data(args, ontology, reviews)
         dumpj(feature_cache_path, feature_data)
       
     output_path = Path("cache") / "ontology.json"
