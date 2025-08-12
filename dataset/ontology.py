@@ -239,25 +239,51 @@ Only return the decision, no explanations or extra text.
 
         lines = []
 
-        def dfs(node_id: str, depth: int, stack: set):
-            if node_id in stack:
-                lines.append("\t"*depth + f"{json_dict[node_id].get('name', node_id)} (cycle detected)")
-                return
-            stack = set(stack) | {node_id}
-            node_name = json_dict[node_id].get("name", node_id)
-            if new_features and node_name in new_features:
-                lines.append("\t"*depth + f"{node_name}*")
-            else:
-                lines.append("\t"*depth + node_name)
-            for child in (json_dict[node_id].get("children") or []):
-                if child in json_dict:
-                    dfs(child, depth+1, stack)
-                else:
-                    lines.append("\t"*(depth+1) + f"{child} (missing)")
+        def get_all_children(node_id: str) -> list:
+            """取得某個節點的所有直接子節點名稱"""
+            if node_id not in json_dict:
+                return []
+            return json_dict[node_id].get("children", [])
 
-        # Write known roots first
-        for r in roots:
-            dfs(r, 0, set())
+        def add_node_to_lines(node_id: str):
+            """將節點加入輸出列表，處理新特徵標記"""
+            node_name = json_dict[node_id]["name"]
+            if new_features and node_name in new_features:
+                return f"{node_name}*"
+            return node_name
+
+        def dfs(node_id: str, depth: int, visited: set):
+            """深度優先搜尋處理節點"""
+            if node_id in visited:
+                lines.append("\t"*depth + f"{json_dict[node_id]['name']} (cycle detected)")
+                return
+            
+            visited.add(node_id)
+            
+            # 處理當前層級節點 (不包括 leaf)
+            lines.append("\t"*depth + add_node_to_lines(node_id))
+
+            if depth < self.MAX_DEPTH - 1:
+                # 遞迴處理子節點
+                children = get_all_children(node_id)
+                for child in children:
+                    if child not in json_dict:
+                        lines.append("\t"*(depth+1) + f"{child} (missing)")
+                    else:
+                        dfs(child, depth+1, visited)
+            else:
+                # 到達 max_depth - 1，將所有子節點以逗號分隔輸出
+                children = get_all_children(node_id)
+                if children:
+                    child_names = [add_node_to_lines(child) for child in children if child in json_dict]
+                    if child_names:
+                        lines.append("\t"*(depth+1) + ", ".join(child_names))
+            
+            visited.remove(node_id)  # 回溯時移除訪問標記
+
+        # 從根節點開始遍歷
+        for root in roots:
+            dfs(root, 0, set())
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
 
@@ -298,13 +324,27 @@ Only return the decision, no explanations or extra text.
             while i < len(line) and line[i] == "\t":
                 i += 1
             depth = i
-            name_raw = line[i:].replace("*", "").strip()
-            if not name_raw:
-                vlog(f"read_txt: empty name at line {line_no}")
-                return False
+            if depth < self.MAX_DEPTH:
+                # 處理第一、二層節點
+                name_raw = line[i:].replace("*", "").strip()
+                if not name_raw:
+                    vlog(f"read_txt: empty name at line {line_no}")
+                    return False
 
-            name, rm, rename_to = split_flags(name_raw)
-            parsed.append((depth, name, rm, rename_to))
+                name, rm, rename_to = split_flags(name_raw)
+                parsed.append((depth, name, rm, rename_to))
+            else:
+                # 處理第三層（逗號分隔）節點
+                items = [item.strip() for item in line[i:].split(",")]
+                for item in items:
+                    if not item:  # 跳過空項目
+                        continue
+                    name_raw = item.replace("*", "").strip()
+                    if not name_raw:
+                        continue
+                    
+                    name, rm, rename_to = split_flags(name_raw)
+                    parsed.append((depth, name, rm, rename_to))
 
         if not parsed:
             vlog("read_txt: file is empty after parsing.")
@@ -527,15 +567,15 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def human_in_the_loop_update(new_since_refine: int, new_features: List[str], ontology: Ontology = None) -> None:
-    ontology.save_txt(Path("cache/ontology_human_in_the_loop.txt"), new_features)
-    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology 進行微調（標記 * 的為新增 feature），完成後按 Enter 繼續...")
+def human_in_the_loop_update(new_since_refine: int, new_features: List[str], update_cnt: int, ontology: Ontology = None) -> None:
+    ontology.save_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"), new_features)
+    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology {update_cnt}進行微調（標記 * 為新增 feature），完成後按 Enter 繼續...")
     input()
-    valid = ontology.read_txt(Path("cache/ontology_human_in_the_loop.txt"))
+    valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
     while valid == False:
         print(f"\n>>> 微調出錯請重試，完成後按 Enter 繼續...")
         input()
-        valid = ontology.read_txt(Path("cache/ontology_human_in_the_loop.txt"))
+        valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
 
 ### --- Main Ontology Building Function --- ###
 def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontology:
@@ -544,6 +584,7 @@ def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontolog
     node_cnt = []
     new_since_refine = 0
     new_features = []
+    update_cnt = 0
 
     ontology = Ontology()
 
@@ -557,9 +598,10 @@ def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontolog
 
         # 每累積到 K 個新節點，就暫停並提示：  
         if new_since_refine >= K or i == review_cnt - 1:
-            human_in_the_loop_update(new_since_refine, new_features, ontology)
+            human_in_the_loop_update(new_since_refine, new_features, update_cnt, ontology)
             new_since_refine = 0
             new_features = []
+            update_cnt += 1
         
         node_cnt.append(len(ontology.nodes))
     
