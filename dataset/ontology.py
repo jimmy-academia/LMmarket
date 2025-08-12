@@ -10,6 +10,7 @@ from utils import readf, vprint, pause_if
 from functools import partial
 from tqdm import tqdm
 import os
+import re
 os.environ['TOKENIZERS_PARALLELISM'] = "false"
 
 from llm import query_llm
@@ -65,6 +66,7 @@ class OntologyNode:
 
 class Ontology:
     def __init__(self):
+        self.MAX_DEPTH = 2
         self.nodes = {}
         self.review2node_id_score = defaultdict(list)
 
@@ -81,7 +83,30 @@ class Ontology:
             scored.append((sim, node))
         scored.sort(reverse=True, key=lambda x: x[0])
         return [node for node in scored[:top_k]]
+
+    def get_node_depth(self, node: OntologyNode) -> int:
+        depth = 0
+        current = node 
+        while current.parent is not None:
+            print(f"get_node_depth: {current.name} -> {current.parent.name}")
+            depth += 1
+            current = current.parent
+        return depth
     
+    def root_max_depth(self, root: OntologyNode) -> int:
+        """回傳以 root 為根的子樹，其所有節點(以整棵樹根為基準)深度的最大值。"""
+        def dfs(n: OntologyNode) -> int:
+            cur = self.get_node_depth(n)
+            if not n.children:
+                return cur
+            return max(dfs(c) for c in n.children.values())
+        return dfs(root)
+    
+    def get_root(self, node):
+        while node.parent:
+            node = node.parent
+        return node
+
     def add_or_update_node(self, review_id, phrase, description, score) -> bool:
         """
         回傳 True = 新增了一個 node (包括 CHILD / PARENT 分支)，
@@ -112,8 +137,11 @@ Decide the best relationship for the new feature:
 - If it's a more specific case of an existing feature, return: CHILD: <existing name>
 - If it's a more general feature that should subsume an existing one, return: PARENT: <existing name>
 - If no relationship, return: NEW
+
+Only return the decision, no explanations or extra text.
 """
             decision = query_llm(prompt).strip()
+            vlog(f"LLM decision for '{cleaned}': {decision}")
 
             if decision.startswith("ALIAS:"):
                 target = decision.split(":",1)[1].strip()
@@ -125,6 +153,18 @@ Decide the best relationship for the new feature:
             elif decision.startswith("CHILD:"):
                 parent = decision.split(":",1)[1].strip()
                 new_id = cleaned
+
+                if parent not in self.nodes:
+                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': parent node does not exist. Skip.")
+                    return False
+
+                if self.get_node_depth(self.nodes[parent]) >= self.MAX_DEPTH:
+                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
+                    self.nodes[parent].update(cleaned)
+                    self.review2node_id_score[review_id].append((parent, score))
+                    vlog(f"'{cleaned}' added as ALIAS to '{parent}'")
+                    return False
+
                 new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
                 new_node.parent = self.nodes[parent]
                 self.nodes[parent].children[new_id] = new_node
@@ -136,6 +176,19 @@ Decide the best relationship for the new feature:
             elif decision.startswith("PARENT:"):
                 child = decision.split(":",1)[1].strip()
                 new_id = cleaned
+
+                if child not in self.nodes:
+                    vlog(f"'{cleaned}' not added as PARENT to '{child}': child node does not exist. Skip.")
+                    return False
+
+                root_node = self.get_root(self.nodes[child])
+                if self.root_max_depth(root_node) >= self.MAX_DEPTH:
+                    vlog(f"'{cleaned}' not added as PARENT to '{child}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
+                    self.nodes[child].update(cleaned)
+                    self.review2node_id_score[review_id].append((child, score))
+                    vlog(f"'{cleaned}' added as ALIAS to '{child}'")
+                    return False
+                
                 new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
                 new_node.children[child] = self.nodes[child]
                 self.nodes[child].parent = new_node
@@ -215,13 +268,20 @@ Decide the best relationship for the new feature:
         parsed = []
         line_no = 0
 
-        def split_remove_flag(name: str) -> Tuple[str, bool]:
+        def split_flags(name: str) -> Tuple[str, bool, Optional[str]]:
             s = name.strip()
             low = s.lower()
+            # remove
             if low.endswith("(remove)"):
                 base = s[: -len("(remove)")].rstrip()
-                return base, True
-            return s, False
+                return base, True, None
+            # rename
+            m = re.search(r"\(rename\s*[:=]\s*(.+?)\)\s*$", s, flags=re.IGNORECASE)
+            if m:
+                base = s[: m.start()].rstrip()
+                new_name = m.group(1).strip()
+                return base, False, new_name
+            return s, False, None
 
         for raw in text.splitlines():
             line_no += 1
@@ -239,15 +299,15 @@ Decide the best relationship for the new feature:
                 vlog(f"read_txt: empty name at line {line_no}")
                 return False
 
-            name, rm = split_remove_flag(name_raw)
-            parsed.append((depth, name, rm))
+            name, rm, rename_to = split_flags(name_raw)
+            parsed.append((depth, name, rm, rename_to))
 
         if not parsed:
             vlog("read_txt: file is empty after parsing.")
             return False
 
         # 先依「名稱（不含 remove 標記）」檢查重複
-        names_in_file = [name for _, name, _ in parsed]
+        names_in_file = [name for _, name, _, _ in parsed]
         seen, dups = set(), set()
         for n in names_in_file:
             if n in seen:
@@ -262,7 +322,12 @@ Decide the best relationship for the new feature:
         kept_lines = []
         i = 0
         while i < len(parsed):
-            depth, name, rm = parsed[i]
+            depth, name, rm, rename_to = parsed[i]
+
+            if rm and rename_to:
+                vlog(f"read_txt: line renames and removes the same node '{name}' — not allowed.")
+                return False
+
             if rm:
                 removed.add(name)
                 i += 1
@@ -271,11 +336,11 @@ Decide the best relationship for the new feature:
                     removed.add(parsed[i][1])
                     i += 1
             else:
-                kept_lines.append((depth, name))
+                kept_lines.append((depth, name, rename_to))
                 i += 1
 
         node_names = set(self.nodes.keys())
-        kept_names = [n for _, n in kept_lines]
+        kept_names = [n for _, n, _ in kept_lines]
 
         # Unknown 檢查（保留與刪除的節點都必須存在於 ontology）
         unknown_all = (set(kept_names) | removed) - node_names
@@ -293,7 +358,7 @@ Decide the best relationship for the new feature:
         parent_of_new = {name: None for name in kept_names}
         stack = []  # (depth, name)
 
-        for depth, name in kept_lines:
+        for depth, name, _ in kept_lines:
             if depth > len(stack):
                 vlog(
                     f"read_txt: invalid indentation jump for '{name}' "
@@ -312,6 +377,34 @@ Decide the best relationship for the new feature:
 
             stack.append((depth, name))
 
+
+        # 收集改名請求（old -> new）
+        rename_map = {}
+        for _, old, new in kept_lines:
+            if new:
+                old_clean = clean_phrase(old)
+                new_clean = clean_phrase(new)
+                rename_map[old_clean] = new_clean
+
+        # 改名衝突檢查
+        # 1. 目標重複
+        targets = [t for t in rename_map.values() if t not in (None, "")]
+        dups_targets = {x for x in targets if targets.count(x) > 1}
+        if dups_targets:
+            vlog(f"read_txt: duplicate rename targets: {sorted(dups_targets)}")
+            return False
+        
+        # 2. 目標與現有/未刪除節點衝突（允許 no-op: old==new）
+        for old, new in rename_map.items():
+            if old == new:
+                continue
+            if (new in self.nodes) and (new != old):
+                vlog(f"read_txt: rename target '{new}' already exists.")
+                return False
+            if new in removed:
+                vlog(f"read_txt: rename target '{new}' is being removed.")
+                return False
+
         # 通過驗證：套用更新（原子性）
         # 先記錄舊父節點用於 logging
         old_parent_name = {
@@ -327,15 +420,41 @@ Decide the best relationship for the new feature:
         except Exception as e:
             vlog(f"read_txt: failed to remove nodes: {e}")
             return False
+        
+        # 改名節點
+        try:
+            for old, new in rename_map.items():
+                if old == new:
+                    continue  # no-op
+                if old not in self.nodes:
+                    vlog(f"read_txt: rename source '{old}' not found (maybe removed?)")
+                    return False
+                node = self.nodes.pop(old)
+                #node.aliases.add(old)   # 舊名保留成 alias (optional)
+                node.name = new
+                node.node_id = new 
+                self.nodes[new] = node
+        except Exception as e:
+            vlog(f"read_txt: failed to apply renames: {e}")
+            return False
+
 
         # 重新連線（先清空）
         for node in self.nodes.values():
             node.parent = None
             node.children.clear()
 
+        def _m(name: Optional[str]) -> Optional[str]:
+            if name is None:
+                return None
+            return rename_map.get(name, name)
+        
         # 重建父子
         try:
             for child_name, p_name in parent_of_new.items():
+                child_name = _m(child_name)
+                p_name = _m(p_name)
+
                 child = self.nodes[child_name]
                 if p_name is None:
                     child.parent = None
