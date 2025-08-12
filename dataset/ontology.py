@@ -33,7 +33,7 @@ def cosine(a, b):
     return float(csim(a.reshape(1, -1), b.reshape(1, -1))[0][0])
 
 def clean_phrase(phrase: str) -> str:
-    return phrase.lower().strip("* ").split(". ")[-1].strip()
+    return phrase.lower().strip("* ").split(". ")[-1].strip().replace("*", "").strip().replace(" ", "_")
 
 ### --- Ontology Node and Ontology Structure --- ###
 
@@ -216,7 +216,7 @@ Only return the decision, no explanations or extra text.
         with open(path, "w") as f:
             json.dump(json_dict, f, indent=2)
     
-    def save_txt(self, path: Path):
+    def save_txt(self, path: Path, new_features: List[str] = None):
         json_dict = {
             name: {
                 "name": n.name,
@@ -244,7 +244,11 @@ Only return the decision, no explanations or extra text.
                 lines.append("\t"*depth + f"{json_dict[node_id].get('name', node_id)} (cycle detected)")
                 return
             stack = set(stack) | {node_id}
-            lines.append("\t"*depth + json_dict[node_id].get("name", node_id))
+            node_name = json_dict[node_id].get("name", node_id)
+            if new_features and node_name in new_features:
+                lines.append("\t"*depth + f"{node_name}*")
+            else:
+                lines.append("\t"*depth + node_name)
             for child in (json_dict[node_id].get("children") or []):
                 if child in json_dict:
                     dfs(child, depth+1, stack)
@@ -294,7 +298,7 @@ Only return the decision, no explanations or extra text.
             while i < len(line) and line[i] == "\t":
                 i += 1
             depth = i
-            name_raw = line[i:].strip()
+            name_raw = line[i:].replace("*", "").strip()
             if not name_raw:
                 vlog(f"read_txt: empty name at line {line_no}")
                 return False
@@ -524,8 +528,8 @@ feature name | definition | score (float between -1.0 and 1.0)
     return results
 
 def human_in_the_loop_update(new_since_refine: int, new_features: List[str], ontology: Ontology = None) -> None:
-    ontology.save_txt(Path("cache/ontology_human_in_the_loop.txt"))
-    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology 進行微調，完成後按 Enter 繼續...")
+    ontology.save_txt(Path("cache/ontology_human_in_the_loop.txt"), new_features)
+    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology 進行微調（標記 * 的為新增 feature），完成後按 Enter 繼續...")
     input()
     valid = ontology.read_txt(Path("cache/ontology_human_in_the_loop.txt"))
     while valid == False:
