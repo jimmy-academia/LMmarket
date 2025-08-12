@@ -6,7 +6,7 @@ import argparse
 
 from utils import load_make
 from .yelp import load_yelp_data
-from .build_features import build_ontology_by_reviews
+from .ontology import build_ontology_by_reviews
 
 def main(args):
     
@@ -29,8 +29,8 @@ def main(args):
     ITEMS = data["ITEMS"]
     REVIEWS = data["REVIEWS"]
     if args.sample:
-        USERS = USERS[:20]
-        ITEMS = ITEMS[:20]
+        USERS = USERS[:1]
+        ITEMS = ITEMS[:1]
         used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
                           {rid for i in ITEMS for rid in i["review_ids"]}
         REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
@@ -54,8 +54,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--sample', action='store_true', help='Use sample mode')
-    parser.add_argument('--dset', type=str, default='yelp', help='Dataset name')
-    args = parser.parse_args()
-    main(args)
+    main()

@@ -119,7 +119,7 @@ def build_ontology_by_reviews(args, reviews):
       
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
-    print(f"Ontology saved to {output_path} with {len(ontology.nodes)} nodes.")
+    print(f"\nOntology saved to {output_path} with {len(ontology.nodes)} nodes.")
     return ontology
 
 def build_ontology_by_users_and_items():
