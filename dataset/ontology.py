@@ -107,6 +107,78 @@ class Ontology:
             node = node.parent
         return node
 
+    def added_as_root(self, new_id: str, review_id: str, score: float, description: str) -> bool:
+        """
+        新增一個全新的 ROOT node。
+        """
+        if new_id in self.nodes:
+            vlog(f"'{new_id}' already exists, not added as ROOT.")
+            return False
+        
+        new_node = OntologyNode(new_id, new_id, description, embed(new_id))
+        self.nodes[new_id] = new_node
+        self.review2node_id_score[review_id].append((new_id, score))
+        vlog(f"'{new_id}' added as ROOT node")
+
+    def added_as_alias(self, target: str, alias: str, review_id: str, score: float) -> bool:
+        """
+        將一個 alias 加入到已存在的 node 中。
+        """
+        if target not in self.nodes:
+            return False
+        self.nodes[target].update(alias)
+        self.review2node_id_score[review_id].append((target, score))
+        vlog(f"'{alias}' added as ALIAS to '{target}'")
+        return False
+
+    def added_as_child(self, parent: str, new_id: str, review_id: str, score: float, description: str) -> bool:
+        """
+        將 new_id 設為 parent node 的 child。
+        """
+        if parent not in self.nodes:
+            vlog(f"'{new_id}' not added as CHILD to '{parent}': parent node does not exist. Skip.")
+            return False
+        if new_id in self.nodes:
+            vlog(f"'{new_id}' not added as CHILD to '{parent}': {new_id} node already exists. Skip.")
+            return False
+
+        if self.get_node_depth(self.nodes[parent]) >= self.MAX_DEPTH:
+            vlog(f"'{new_id}' not added as CHILD to '{parent}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
+            return self.added_as_alias(parent, new_id, review_id, score)
+
+        new_id = clean_phrase(new_id)
+        new_node = OntologyNode(new_id, new_id, description, embed(new_id))
+        new_node.parent = self.nodes[parent]
+        self.nodes[parent].children[new_id] = new_node
+        self.nodes[new_id] = new_node
+        self.review2node_id_score[review_id].append((new_id, score))
+        vlog(f"'{new_id}' added as CHILD to '{parent}'")
+        return True
+
+    def added_as_parent(self, new_id: str, child: str, review_id: str, score: float, description: str) -> bool:
+        """
+        將 new_id 設為 child node 的 parent。
+        """
+        if child not in self.nodes:
+            vlog(f"'{new_id}' not added as PARENT to '{child}': child node does not exist. Skip.")
+            return False
+        if new_id in self.nodes:
+            vlog(f"'{new_id}' not added as PARENT to '{child}': {new_id} node already exists. Skip.")
+            return False
+
+        root_node = self.get_root(self.nodes[child])
+        if self.root_max_depth(root_node) >= self.MAX_DEPTH:
+            vlog(f"'{new_id}' not added as PARENT to '{child}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
+            return self.added_as_alias(child, new_id, review_id, score)
+
+        new_node = OntologyNode(new_id, new_id, description, embed(new_id))
+        new_node.children[child] = self.nodes[child]
+        self.nodes[child].parent = new_node
+        self.nodes[new_id] = new_node
+        self.review2node_id_score[review_id].append((new_id, score))
+        vlog(f"'{new_id}' added as PARENT to '{child}'")
+        return True
+
     def add_or_update_node(self, review_id, phrase, description, score) -> bool:
         """
         回傳 True = 新增了一個 node (包括 CHILD / PARENT 分支)，
@@ -120,7 +192,7 @@ class Ontology:
                 return False
 
         # 2) LLM 判斷
-        top_candidates = self.search_top_ten(description)
+        top_candidates = self.search_top_ten(cleaned, top_k=20)
         if top_candidates:
             candidates_text = "\n".join(f"{n.name}: {n.description}" for _, n in top_candidates)
             prompt = f"""
@@ -136,7 +208,6 @@ Decide the best relationship for the new feature:
 - If it's a near synonym or alternative wording of an existing one, return: ALIAS: <existing name>
 - If it's a more specific case of an existing feature, return: CHILD: <existing name>
 - If it's a more general feature that should subsume an existing one, return: PARENT: <existing name>
-- If no relationship, return: NEW
 
 Only return the decision, no explanations or extra text.
 """
@@ -145,63 +216,21 @@ Only return the decision, no explanations or extra text.
 
             if decision.startswith("ALIAS:"):
                 target = decision.split(":",1)[1].strip()
-                self.nodes[target].update(cleaned)
-                self.review2node_id_score[review_id].append((target, score))
-                vlog(f"'{cleaned}' added as ALIAS to '{target}'")
-                return False
+                return self.added_as_alias(target, cleaned, review_id, score)
 
             elif decision.startswith("CHILD:"):
                 parent = decision.split(":",1)[1].strip()
-                new_id = cleaned
-
-                if parent not in self.nodes:
-                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': parent node does not exist. Skip.")
-                    return False
-
-                if self.get_node_depth(self.nodes[parent]) >= self.MAX_DEPTH:
-                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
-                    self.nodes[parent].update(cleaned)
-                    self.review2node_id_score[review_id].append((parent, score))
-                    vlog(f"'{cleaned}' added as ALIAS to '{parent}'")
-                    return False
-
-                new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
-                new_node.parent = self.nodes[parent]
-                self.nodes[parent].children[new_id] = new_node
-                self.nodes[new_id] = new_node
-                self.review2node_id_score[review_id].append((new_id, score))
-                vlog(f"'{cleaned}' added as CHILD to '{parent}'")
-                return True
+                return self.added_as_child(parent, cleaned, review_id, score, description)
 
             elif decision.startswith("PARENT:"):
                 child = decision.split(":",1)[1].strip()
-                new_id = cleaned
-
-                if child not in self.nodes:
-                    vlog(f"'{cleaned}' not added as PARENT to '{child}': child node does not exist. Skip.")
-                    return False
-
-                root_node = self.get_root(self.nodes[child])
-                if self.root_max_depth(root_node) >= self.MAX_DEPTH:
-                    vlog(f"'{cleaned}' not added as PARENT to '{child}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
-                    self.nodes[child].update(cleaned)
-                    self.review2node_id_score[review_id].append((child, score))
-                    vlog(f"'{cleaned}' added as ALIAS to '{child}'")
-                    return False
-                
-                new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
-                new_node.children[child] = self.nodes[child]
-                self.nodes[child].parent = new_node
-                self.nodes[new_id] = new_node
-                self.review2node_id_score[review_id].append((new_id, score))
-                vlog(f"'{cleaned}' added as PARENT to '{child}'")
-                return True
+                return self.added_as_parent(cleaned, child, review_id, score, description)
 
         # 3) 全新 node
-        node_id = cleaned
-        self.nodes[node_id] = OntologyNode(node_id, cleaned, description, embed(cleaned))
-        self.review2node_id_score[review_id].append((node_id, score))
-        return True
+        #node_id = cleaned
+        #self.nodes[node_id] = OntologyNode(node_id, cleaned, description, embed(cleaned))
+        #self.review2node_id_score[review_id].append((node_id, score))
+        #return True
 
     def save_json(self, path: Path):
         json_dict = {
@@ -240,7 +269,7 @@ Only return the decision, no explanations or extra text.
         lines = []
 
         def get_all_children(node_id: str) -> list:
-            """取得某個節點的所有直接子節點名稱"""
+            """取得某個節點的所有子節點名稱"""
             if node_id not in json_dict:
                 return []
             return json_dict[node_id].get("children", [])
@@ -253,7 +282,6 @@ Only return the decision, no explanations or extra text.
             return node_name
 
         def dfs(node_id: str, depth: int, visited: set):
-            """深度優先搜尋處理節點"""
             if node_id in visited:
                 lines.append("\t"*depth + f"{json_dict[node_id]['name']} (cycle detected)")
                 return
@@ -279,7 +307,7 @@ Only return the decision, no explanations or extra text.
                     if child_names:
                         lines.append("\t"*(depth+1) + ", ".join(child_names))
             
-            visited.remove(node_id)  # 回溯時移除訪問標記
+            # visited.remove(node_id)  # 允許重複 node 在不同分支中出現
 
         # 從根節點開始遍歷
         for root in roots:
@@ -569,7 +597,7 @@ feature name | definition | score (float between -1.0 and 1.0)
 
 def human_in_the_loop_update(new_since_refine: int, new_features: List[str], update_cnt: int, ontology: Ontology = None) -> None:
     ontology.save_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"), new_features)
-    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology {update_cnt}進行微調（標記 * 為新增 feature），完成後按 Enter 繼續...")
+    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology {update_cnt} 進行微調（標記 * 為新增 feature），完成後按 Enter 繼續...")
     input()
     valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
     while valid == False:
@@ -587,6 +615,62 @@ def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontolog
     update_cnt = 0
 
     ontology = Ontology()
+    # Food Quality 相關特徵
+    ontology.added_as_root("food quality", "root", 0, "Overall quality assessment of foods")
+    ontology.added_as_child("food quality", "freshness", "child", 0, "Freshness of ingredients and prepared items")
+    ontology.added_as_child("food quality", "flavor", "child", 0, "Taste and overall flavor profile")
+    ontology.added_as_child("food quality", "temperature", "child", 0, "Appropriate serving temperature")
+    ontology.added_as_child("food quality", "texture", "child", 0, "Food texture and consistency")
+    ontology.added_as_child("food quality", "presentation", "child", 0, "Visual appearance and plating")
+
+    # Price 相關特徵
+    ontology.added_as_root("price", "root", 0, "All pricing and value-related aspects")
+    ontology.added_as_child("price", "value", "child", 0, "Price to quality ratio")
+    ontology.added_as_child("price", "portion value", "child", 0, "Amount of food for the price")
+    ontology.added_as_child("price", "pricing policy", "child", 0, "Pricing structure and additional charges")
+    ontology.added_as_child("price", "payment options", "child", 0, "Available payment methods")
+
+    # Environment 相關特徵
+    ontology.added_as_root("environment", "root", 0, "Physical and ambient characteristics of the establishment")
+    ontology.added_as_child("environment", "cleanliness", "child", 0, "Overall cleanliness and hygiene")
+    ontology.added_as_child("environment", "ambiance", "child", 0, "Atmosphere and mood of the place")
+    ontology.added_as_child("environment", "noise level", "child", 0, "Sound level and acoustics")
+    ontology.added_as_child("environment", "lighting", "child", 0, "Quality and appropriateness of lighting")
+
+    # Service 相關特徵
+    ontology.added_as_root("service", "root", 0, "All service-related experiences and interactions")
+    ontology.added_as_child("service", "staff attitude", "child", 0, "Staff friendliness and professionalism")
+    ontology.added_as_child("service", "responsiveness", "child", 0, "Speed and quality of service response")
+    ontology.added_as_child("service", "accuracy", "child", 0, "Accuracy of orders and service")
+    ontology.added_as_child("service", "knowledge", "child", 0, "Staff knowledge about menu and service")
+
+    # Variety 相關特徵
+    ontology.added_as_root("variety", "root", 0, "Range and diversity of offerings")
+    ontology.added_as_child("variety", "menu options", "child", 0, "Diversity of menu items")
+    ontology.added_as_child("variety", "dietary options", "child", 0, "Availability of different dietary choices")
+    ontology.added_as_child("variety", "beverage selection", "child", 0, "Range of drink options")
+    ontology.added_as_child("variety", "special items", "child", 0, "Unique or special menu items")
+
+    # Convenience 相關特徵
+    ontology.added_as_root("convenience", "root", 0, "Ease of access and use of facilities")
+    ontology.added_as_child("convenience", "location", "child", 0, "Accessibility of location")
+    ontology.added_as_child("convenience", "hours", "child", 0, "Operating hours convenience")
+    ontology.added_as_child("convenience", "wait time", "child", 0, "Time spent waiting")
+    ontology.added_as_child("convenience", "ordering process", "child", 0, "Ease of ordering")
+
+    # Comfort 相關特徵
+    ontology.added_as_root("comfort", "root", 0, "Physical and emotional comfort aspects")
+    ontology.added_as_child("comfort", "seating", "child", 0, "Comfort of seating arrangements")
+    ontology.added_as_child("comfort", "space", "child", 0, "Amount of personal space")
+    ontology.added_as_child("comfort", "temperature", "child", 0, "Indoor temperature comfort")
+    ontology.added_as_child("comfort", "accessibility", "child", 0, "Ease of movement and access")
+
+    # Experience 相關特徵
+    ontology.added_as_root("experience", "root", 0, "Overall satisfaction and subjective aspects of the dining experience including atmosphere, occasion suitability, and emotional response")
+    ontology.added_as_child("experience", "overall satisfaction", "child", 0, "General satisfaction level")
+    ontology.added_as_child("experience", "authenticity", "child", 0, "Authenticity of dining experience")
+    ontology.added_as_child("experience", "atmosphere", "child", 0, "Overall dining atmosphere")
+    ontology.added_as_child("experience", "return intention", "child", 0, "Likelihood to return")
 
     for i, r in tqdm(enumerate(reviews), total=review_cnt, desc="Process reviews"):
         feature_scores = extract_feature_mentions(r["text"], ontology, args.dset)
