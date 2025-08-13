@@ -5,7 +5,7 @@ from pathlib import Path
 
 from utils import load_make
 from .yelp import load_yelp_data
-from .build_features import build_ontology_by_reviews
+from .build_ontology import build_ontology_by_reviews
 
 def main(args):
     

@@ -1,621 +1,350 @@
-from typing import List, Tuple, Dict, Optional
-from collections import defaultdict, OrderedDict
+# ontology.py
+# from __future__ import annotations
+import shutil, time
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Optional, Set
+from collections import OrderedDict, defaultdict
 from pathlib import Path
-import numpy as np
 import json
-import logging
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity as csim
-from utils import readf, vprint, pause_if
-from functools import partial
-from tqdm import tqdm
-import os
 import re
-os.environ['TOKENIZERS_PARALLELISM'] = "false"
 
-from llm import query_llm
-from debug import check
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity as _csim
 
-### --- Flags --- ###
-VERBOSE = True
-PAUSE = False
-vlog = partial(vprint, flag=VERBOSE)
-ppause = partial(pause_if, flag=PAUSE)
+from utils import clean_phrase as _clean
 
-### --- Embedding Setup --- ###
+def _node_embed_text(name: str, description: str) -> str:
+    """Stronger embedding signal: name + description."""
+    name = (name or "").strip()
+    desc = (description or "").strip()
+    return f"{name} {desc}".strip() if desc else name
 
-embed_model = SentenceTransformer("BAAI/bge-small-en")
 
-def embed(text: str) -> np.ndarray:
-    return embed_model.encode(text, normalize_embeddings=True)
-
-def cosine(a, b):
-    return float(csim(a.reshape(1, -1), b.reshape(1, -1))[0][0])
-
-def clean_phrase(phrase: str) -> str:
-    return phrase.lower().strip("* ").split(". ")[-1].strip().replace("*", "").strip().replace(" ", "_")
-
-### --- Ontology Node and Ontology Structure --- ###
-
+@dataclass
 class OntologyNode:
-    def __init__(self, node_id, name, description, embedding):
-        self.node_id = node_id
-        self.name = name
-        self.description = description
-        self.aliases = {name}
-        self.embedding = embedding
-        self.children = {}
-        self.parent = None
-
-    def update(self, alias: str):
-        self.aliases.add(alias)
-
-    def __repr__(self):
-        parent_str = f"\nparent='{self.parent.name}'" if self.parent else ""
-        child_str = ""
-        if self.children:
-            child_str = "\nchildren=[" + ", ".join([child for child in self.children]) + "]"
-
-        return (
-            f"OntologyNode(name='{self.name}',"
-            f"\ndescription='{self.description}',"
-            f"\naliases={self.aliases}"
-            f"{parent_str}"
-            f"{child_str})\n"
-        )
+    name: str
+    description: str = ""
+    aliases: Set[str] = field(default_factory=set)
+    parent: Optional[str] = None           # keep simple: store parent by name
+    children: List[str] = field(default_factory=list)  # child names
 
 class Ontology:
-    def __init__(self):
-        self.MAX_DEPTH = 2
-        self.nodes = {}
-        self.review2node_id_score = defaultdict(list)
+    def __init__(
+        self,
+        batch_threshold: int = 10,
+        max_depth: int = 3,
+        edit_path: Path = Path("cache/ontology_edit.txt"),
+        backup_json: Path = Path("cache/ontology_backup.json"),
+        pause_message: str = "\n>>> Edit cache/ontology_edit.txt (add '(alias: target)' to lines as needed), save, then press Enter..."
+    ):
+        self.MAX_DEPTH = max_depth
+        self.batch_threshold = batch_threshold
+        self.edit_path = edit_path
+        self.backup_json = backup_json
+        self.pause_message = pause_message
 
-    def feature_hints(self, text, max_count=60):
-        relevant_nodes = self.search_top_ten(text, top_k=max_count)
-        names = [n.name for _, n in relevant_nodes]
-        return names
-    
-    def search_top_ten(self, query_text, top_k=10):
-        query_vec = embed(query_text)
-        scored = []
-        for node_id, node in self.nodes.items():
-            sim = cosine(query_vec, node.embedding)
-            scored.append((sim, node))
-        scored.sort(reverse=True, key=lambda x: x[0])
-        return [node for node in scored[:top_k]]
+        self.nodes: Dict[str, OntologyNode] = OrderedDict()
+        self.review2node_id_score: Dict[str, List[Tuple[str, float]]] = defaultdict(list)
 
-    def get_node_depth(self, node: OntologyNode) -> int:
-        depth = 0
-        current = node 
-        while current.parent is not None:
-            print(f"get_node_depth: {current.name} -> {current.parent.name}")
-            depth += 1
-            current = current.parent
-        return depth
-    
-    def root_max_depth(self, root: OntologyNode) -> int:
-        """回傳以 root 為根的子樹，其所有節點(以整棵樹根為基準)深度的最大值。"""
-        def dfs(n: OntologyNode) -> int:
-            cur = self.get_node_depth(n)
-            if not n.children:
-                return cur
-            return max(dfs(c) for c in n.children.values())
-        return dfs(root)
-    
-    def get_root(self, node):
-        while node.parent:
-            node = node.parent
-        return node
+        # queue of brand-new features awaiting human action
+        # name -> (definition, score)
+        self._pending: "OrderedDict[str, Tuple[str, float]]" = OrderedDict()
 
-    def add_or_update_node(self, review_id, phrase, description, score) -> bool:
+        # embedding model & cache
+        self._embed_model = SentenceTransformer("BAAI/bge-small-en")
+        self._emb_cache: Dict[str, np.ndarray] = {}  # node_name -> normalized vector
+
+
+    def add_or_update_node(self, review_id: str, phrase: str, description: str, score: float) -> bool:
         """
-        回傳 True = 新增了一個 node (包括 CHILD / PARENT 分支)，
-        False = 只是加了 alias 或回傳到既有 node。
+        Exact-match add/update with simple human-in-the-loop once threshold is hit.
+        - If `phrase` matches an existing node name exactly → record the hit; return False.
+        - Else queue it. If queue size reaches threshold:
+            * write edit file: <new_feature> lines (with recommendations) then '===', then current structure
+            * pause for human edits (expects '(alias: target)' added on top lines if desired)
+            * read edited file and apply aliases / create nodes for any remaining
+        Returns True if a new node was eventually created (after applying the edit file); False if it hit/aliased.
         """
-        cleaned = clean_phrase(phrase)
-        # 1) alias match
-        for node in self.nodes.values():
-            if cleaned in node.aliases:
-                self.review2node_id_score[review_id].append((node.node_id, score))
-                return False
+        name = _clean(phrase)
 
-        # 2) LLM 判斷
-        top_candidates = self.search_top_ten(description)
-        if top_candidates:
-            candidates_text = "\n".join(f"{n.name}: {n.description}" for _, n in top_candidates)
-            prompt = f"""
-A new feature has been extracted from a review:
+        # 1) Exact hit?
+        if name in self.nodes:
+            self.review2node_id_score[review_id].append((name, float(score)))
+            return False
 
-New Feature Name: {cleaned}
-New Feature Definition: {description}
+        # 2) Queue new feature
+        if name not in self._pending:
+            self._pending[name] = (description.strip(), float(score))
 
-Below are existing features:
-{candidates_text}
+        # 3) If threshold reached -> write, pause, apply
+        if len(self._pending) >= self.batch_threshold:
+            self._write_edit_file_with_recommendations()
+            # backup current ontology json before applying edits
+            self.save(self.backup_json)
 
-Decide the best relationship for the new feature:
-- If it's a near synonym or alternative wording of an existing one, return: ALIAS: <existing name>
-- If it's a more specific case of an existing feature, return: CHILD: <existing name>
-- If it's a more general feature that should subsume an existing one, return: PARENT: <existing name>
-- If no relationship, return: NEW
+            # Pause: `input()` is fine for CLI; guard for non-interactive envs.
+            try:
+                input(self.pause_message)
+            except EOFError:
+                # Non-interactive environment; proceed without pausing.
+                pass
 
-Only return the decision, no explanations or extra text.
-"""
-            decision = query_llm(prompt).strip()
-            vlog(f"LLM decision for '{cleaned}': {decision}")
+            self._apply_edit_file()   # apply aliases or create nodes
+            self._pending.clear()
 
-            if decision.startswith("ALIAS:"):
-                target = decision.split(":",1)[1].strip()
-                self.nodes[target].update(cleaned)
-                self.review2node_id_score[review_id].append((target, score))
-                vlog(f"'{cleaned}' added as ALIAS to '{target}'")
-                return False
+        # Decision (for current item) is unknown until after edit file is applied.
+        # We conservatively return True if it's not an exact hit (it *may* become a node).
+        # If you want accuracy, you can track changes inside _apply_edit_file and return accordingly.
+        return name in self.nodes
 
-            elif decision.startswith("CHILD:"):
-                parent = decision.split(":",1)[1].strip()
-                new_id = cleaned
-
-                if parent not in self.nodes:
-                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': parent node does not exist. Skip.")
-                    return False
-
-                if self.get_node_depth(self.nodes[parent]) >= self.MAX_DEPTH:
-                    vlog(f"'{cleaned}' not added as CHILD to '{parent}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
-                    self.nodes[parent].update(cleaned)
-                    self.review2node_id_score[review_id].append((parent, score))
-                    vlog(f"'{cleaned}' added as ALIAS to '{parent}'")
-                    return False
-
-                new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
-                new_node.parent = self.nodes[parent]
-                self.nodes[parent].children[new_id] = new_node
-                self.nodes[new_id] = new_node
-                self.review2node_id_score[review_id].append((new_id, score))
-                vlog(f"'{cleaned}' added as CHILD to '{parent}'")
-                return True
-
-            elif decision.startswith("PARENT:"):
-                child = decision.split(":",1)[1].strip()
-                new_id = cleaned
-
-                if child not in self.nodes:
-                    vlog(f"'{cleaned}' not added as PARENT to '{child}': child node does not exist. Skip.")
-                    return False
-
-                root_node = self.get_root(self.nodes[child])
-                if self.root_max_depth(root_node) >= self.MAX_DEPTH:
-                    vlog(f"'{cleaned}' not added as PARENT to '{child}': max depth reached ({self.MAX_DEPTH}). Added as alias instead.")
-                    self.nodes[child].update(cleaned)
-                    self.review2node_id_score[review_id].append((child, score))
-                    vlog(f"'{cleaned}' added as ALIAS to '{child}'")
-                    return False
-                
-                new_node = OntologyNode(new_id, cleaned, description, embed(cleaned))
-                new_node.children[child] = self.nodes[child]
-                self.nodes[child].parent = new_node
-                self.nodes[new_id] = new_node
-                self.review2node_id_score[review_id].append((new_id, score))
-                vlog(f"'{cleaned}' added as PARENT to '{child}'")
-                return True
-
-        # 3) 全新 node
-        node_id = cleaned
-        self.nodes[node_id] = OntologyNode(node_id, cleaned, description, embed(cleaned))
-        self.review2node_id_score[review_id].append((node_id, score))
-        return True
-
-    def save_json(self, path: Path):
-        json_dict = {
+    # ---------------------------
+    # Minimal helpers to support the flow
+    # ---------------------------
+    def save(self, path: Path) -> None:
+        data = {
             name: {
-                "name": n.name,
                 "description": n.description,
-                "aliases": list(n.aliases),
-                "children": list(n.children.keys()),
-                "parent": ("None" if n.parent == None else n.parent.name),
+                "aliases": sorted(list(n.aliases)),
+                "parent": n.parent,
+                "children": list(n.children),
             } for name, n in self.nodes.items()
         }
-        with open(path, "w") as f:
-            json.dump(json_dict, f, indent=2)
-    
-    def save_txt(self, path: Path, new_features: List[str] = None):
-        json_dict = {
-            name: {
-                "name": n.name,
-                "children": list(n.children.keys()),
-                "parent": ("None" if n.parent == None else n.parent.name),
-            } for name, n in self.nodes.items()
-        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-        def norm_parent(p):
-            if isinstance(p, str) and p == "None":
-                return None
-            return p
-
-        # Keep deterministic ordering (as loaded from JSON)
-        if not isinstance(json_dict, OrderedDict):
-            json_dict = OrderedDict(json_dict.items())
-
-        parents = {k: norm_parent(v.get("parent")) for k, v in json_dict.items()}
-        roots = [k for k in json_dict if parents.get(k) is None]
-
-        lines = []
-
-        def get_all_children(node_id: str) -> list:
-            """取得某個節點的所有子節點名稱"""
-            if node_id not in json_dict:
-                return []
-            return json_dict[node_id].get("children", [])
-
-        def add_node_to_lines(node_id: str):
-            """將節點加入輸出列表，處理新特徵標記"""
-            node_name = json_dict[node_id]["name"]
-            if new_features and node_name in new_features:
-                return f"{node_name}*"
-            return node_name
-
-        def dfs(node_id: str, depth: int, visited: set):
-            if node_id in visited:
-                lines.append("\t"*depth + f"{json_dict[node_id]['name']} (cycle detected)")
+    def __str__(self) -> str:
+        # simple tree print (no re-parenting logic here)
+        roots = [n for n in self.nodes.values() if n.parent is None]
+        roots = sorted(roots, key=lambda x: x.name)
+        out: List[str] = []
+        def dfs(name: str, d: int):
+            out.append("  "*d + name)
+            node = self.nodes[name]
+            if d >= self.MAX_DEPTH - 1:
+                if node.children:
+                    out.append("  "*(d+1) + ", ".join(sorted(node.children)))
                 return
-            
-            visited.add(node_id)
-            
-            # 處理當前層級節點 (不包括 leaf)
-            lines.append("\t"*depth + add_node_to_lines(node_id))
+            for c in sorted(node.children):
+                dfs(c, d+1)
+        for r in roots:
+            dfs(r.name, 0)
+        return "\n".join(out)
 
-            if depth < self.MAX_DEPTH - 1:
-                # 遞迴處理子節點
-                children = get_all_children(node_id)
-                for child in children:
-                    if child not in json_dict:
-                        lines.append("\t"*(depth+1) + f"{child} (missing)")
-                    else:
-                        dfs(child, depth+1, visited)
+    # --- recommendation (very light-weight, name similarity only) ---
+    def _recommend(self, feat: str, top_k: int = 3, feat_desc: str = "") -> List[Tuple[float, str]]:
+        """
+        Embedding-based nearest neighbors over existing node (name+description).
+        Returns [(score, node_name)] sorted desc by cosine similarity.
+        """
+        if not self.nodes:
+            return []
+
+        # build query embedding
+        q_text = _node_embed_text(feat, feat_desc)
+        if not q_text:
+            return []
+        q_vec = self._embed_model.encode(q_text, normalize_embeddings=True)
+
+        # score against cached/computed node embeddings
+        scored: List[Tuple[float, str]] = []
+        for name, node in self.nodes.items():
+            # cache node emb
+            if name not in self._emb_cache:
+                n_text = _node_embed_text(node.name, node.description)
+                self._emb_cache[name] = self._embed_model.encode(n_text, normalize_embeddings=True)
+            s = float(_csim(q_vec.reshape(1, -1), self._emb_cache[name].reshape(1, -1))[0][0])
+            scored.append((s, name))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[:top_k]
+
+
+    # --- write edit file ---
+    def _write_edit_file_with_recommendations(self) -> None:
+        """
+        Top block lines:
+            <new_feature>\t<new_feature_description>
+        You MAY add a third column (tab-separated):
+            <new_feature>\t<new_feature_description>\t<alias_target_feature>
+        Then a separator line '===', then the current structure (read-only for now).
+        """
+        lines: list[str] = []
+
+        # Top block: write name + description, plus inline comment with recs
+        for nf, (desc, _score) in self._pending.items():
+            safe_desc = desc.replace("\t", " ").strip()
+            # compute embedding recs
+            recs = self._recommend(nf, top_k=3, feat_desc=safe_desc)
+            if recs:
+                rec_str = ", ".join(f"{name}({score:.2f})" for score, name in recs)
+                lines.append(f"{nf}\t{safe_desc}    # rec: {rec_str}")
             else:
-                # 到達 max_depth - 1，將所有子節點以逗號分隔輸出
-                children = get_all_children(node_id)
-                if children:
-                    child_names = [add_node_to_lines(child) for child in children if child in json_dict]
-                    if child_names:
-                        lines.append("\t"*(depth+1) + ", ".join(child_names))
-            
-            # visited.remove(node_id)  # 允許重複 node 在不同分支中出現
+                lines.append(f"{nf}\t{safe_desc}")
 
-        # 從根節點開始遍歷
-        for root in roots:
-            dfs(root, 0, set())
+        lines.append("===")
 
-        Path(path).write_text("\n".join(lines), encoding="utf-8")
+        # Structure block
+        roots = [n for n in self.nodes.values() if n.parent is None]
+        roots = sorted(roots, key=lambda x: x.name)
 
-    def read_txt(self, path: Path) -> bool:
-        try:
-            text = Path(path).read_text(encoding="utf-8")
-        except Exception as e:
-            vlog(f"read_txt: cannot read file: {e}")
-            return False
+        def dfs(name: str, d: int):
+            lines.append("\t"*d + name)
+            node = self.nodes[name]
+            if d >= self.MAX_DEPTH - 1:
+                if node.children:
+                    lines.append("\t"*(d+1) + ", ".join(sorted(node.children)))
+                return
+            for c in sorted(node.children):
+                dfs(c, d+1)
 
-        # Parse lines -> (depth, name, remove_flag)
-        parsed = []
-        line_no = 0
+        for r in roots:
+            dfs(r.name, 0)
 
-        def split_flags(name: str) -> Tuple[str, bool, Optional[str]]:
-            s = name.strip()
-            low = s.lower()
-            # remove
-            if low.endswith("(remove)"):
-                base = s[: -len("(remove)")].rstrip()
-                return base, True, None
-            # rename
-            m = re.search(r"\(rename\s*[:=]\s*(.+?)\)\s*$", s, flags=re.IGNORECASE)
-            if m:
-                base = s[: m.start()].rstrip()
-                new_name = m.group(1).strip()
-                return base, False, new_name
-            return s, False, None
+        self.edit_path.parent.mkdir(parents=True, exist_ok=True)
+        self.edit_path.write_text("\n".join(lines), encoding="utf-8")
 
-        for raw in text.splitlines():
-            line_no += 1
-            line = raw.rstrip("\n\r")
-            if not line.strip():
-                continue  # ignore empty lines
+    def _apply_edit_file(self) -> None:
+        """
+        Reads BOTH the top block and bottom block.
+        - If '===' is present: top is new-features TSV; bottom is the structure.
+        - If '===' is absent: treat the whole file as the structure (top empty).
+        
+        TOP block format (tab-separated):
+            <feature>\t<description>[\t<alias_target>]
+          Behavior:
+            - If alias_target exists in the ontology after we rebuild the structure,
+              add <feature> as an alias to that target and remove standalone node <feature> if created.
+            - If alias_target is empty and <feature> does not appear in the tree block,
+              create <feature> as a ROOT node with the given description (or update description if node exists).
+        
+        BOTTOM (structure) block:
+          Tab-indented hierarchy. At the last printed depth (MAX_DEPTH-1), children can be on a single
+          comma-joined line. No flags/parentheses here.
+          
+        Steps:
+          1) Archive the edited file (timestamped copy).
+          2) Parse top block into (name -> (description, alias_target)).
+          3) Parse structure block and REBUILD the tree (create nodes as needed),
+             preferring existing descriptions, falling back to top-block description, then empty.
+          4) Apply alias directives from the top block:
+             - Merge as alias into target; remove standalone node <feature> if present.
+          5) For top-block features without alias targets and not present in the structure, ensure a ROOT node.
+        """
+        raw = self.edit_path.read_text(encoding="utf-8")
 
-            # Count leading tabs
-            i = 0
-            while i < len(line) and line[i] == "\t":
-                i += 1
-            depth = i
-            if depth < self.MAX_DEPTH:
-                # 處理第一、二層節點
-                name_raw = line[i:].replace("*", "").strip()
-                if not name_raw:
-                    vlog(f"read_txt: empty name at line {line_no}")
-                    return False
+        # 1) Archive
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        arc_dir = self.edit_path.parent / "edits_archive"
+        arc_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.edit_path, arc_dir / f"{self.edit_path.stem}_{ts}{self.edit_path.suffix}")
 
-                name, rm, rename_to = split_flags(name_raw)
-                parsed.append((depth, name, rm, rename_to))
-            else:
-                # 處理第三層（逗號分隔）節點
-                items = [item.strip() for item in line[i:].split(",")]
-                for item in items:
-                    if not item:  # 跳過空項目
-                        continue
-                    name_raw = item.replace("*", "").strip()
-                    if not name_raw:
-                        continue
-                    
-                    name, rm, rename_to = split_flags(name_raw)
-                    parsed.append((depth, name, rm, rename_to))
+        # 2) Split file
+        if "===" in raw:
+            top, tree_text = raw.split("===", 1)
+        else:
+            top, tree_text = "", raw  # initial structure case or no top block
 
-        if not parsed:
-            vlog("read_txt: file is empty after parsing.")
-            return False
+        # ---- Parse TOP block: TSV lines: name \t desc [\t alias_target] ----
+        top_specs: dict[str, tuple[str, str]] = {}  # name -> (desc, alias_target or "")
+        for ln in top.splitlines():
+            s = ln.strip()
+            if not s or s.startswith("#"):
+                continue
+            s = s.split("#", 1)[0].rstrip()
+            parts = [p.strip() for p in s.split("\t")]
+            if not parts:
+                continue
+            feat = _clean(parts[0])
+            desc = parts[1] if len(parts) >= 2 else ""
+            alias_tgt = _clean(parts[2]) if len(parts) >= 3 and parts[2] else ""
+            if feat:
+                top_specs[feat] = (desc, alias_tgt)
 
-        # 先依「名稱（不含 remove 標記）」檢查重複
-        names_in_file = [name for _, name, _, _ in parsed]
-        seen, dups = set(), set()
-        for n in names_in_file:
-            if n in seen:
-                dups.add(n)
-            seen.add(n)
-        if dups:
-            vlog(f"read_txt: duplicated node(s) in file: {sorted(dups)}")
-            return False
+        # ---- Parse STRUCTURE block and rebuild the tree ----
+        # Helper to expand tree text into (depth, name) items.
+        def _parse_tree_block(tree_str: str) -> list[tuple[int, str]]:
+            lines = [ln.rstrip("\r\n") for ln in tree_str.splitlines() if ln.strip()]
+            parsed: list[tuple[int, str]] = []
+            for ln in lines:
+                depth = len(ln) - len(ln.lstrip("\t"))
+                payload = ln[depth:].strip()
+                # If we're at last printed depth, allow comma-joined children on the NEXT line
+                if depth == self.MAX_DEPTH - 1 and "," in payload:
+                    for item in [x.strip() for x in payload.split(",") if x.strip()]:
+                        parsed.append((depth + 1, _clean(item)))
+                else:
+                    parsed.append((depth, _clean(payload)))
+            return parsed
 
-        # 展開 remove 子樹：遇到 (remove) 就把該節點與其後續更深的子孫一起標記為刪除
-        removed = set()
-        kept_lines = []
-        i = 0
-        while i < len(parsed):
-            depth, name, rm, rename_to = parsed[i]
+        parsed = _parse_tree_block(tree_text)
 
-            if rm and rename_to:
-                vlog(f"read_txt: line renames and removes the same node '{name}' — not allowed.")
-                return False
+        # Rebuild nodes (keep old descriptions if known; use top desc as fallback)
+        old_nodes = self.nodes
+        self.nodes = OrderedDict()
+        stack: list[tuple[int, str]] = []  # (depth, name)
 
-            if rm:
-                removed.add(name)
-                i += 1
-                # 收掉整個子樹
-                while i < len(parsed) and parsed[i][0] > depth:
-                    removed.add(parsed[i][1])
-                    i += 1
-            else:
-                kept_lines.append((depth, name, rename_to))
-                i += 1
+        def _desc_for(name: str) -> str:
+            # prefer existing description, then top-block desc, else empty
+            if name in old_nodes and old_nodes[name].description:
+                return old_nodes[name].description
+            if name in top_specs and top_specs[name][0]:
+                return top_specs[name][0]
+            return ""
 
-        node_names = set(self.nodes.keys())
-        kept_names = [n for _, n, _ in kept_lines]
+        # Ensure node factory
+        def _ensure_node(name: str):
+            if name not in self.nodes:
+                self.nodes[name] = OntologyNode(name=name, description=_desc_for(name))
 
-        # Unknown 檢查（保留與刪除的節點都必須存在於 ontology）
-        unknown_all = (set(kept_names) | removed) - node_names
-        if unknown_all:
-            vlog(f"read_txt: unknown node(s) in file (kept/removed): {sorted(unknown_all)}")
-            return False
-
-        # 缺漏檢查：未出現在檔案、且也沒被標記 remove 的節點 => 錯誤
-        missing = node_names - set(kept_names) - removed
-        if missing:
-            vlog(f"read_txt: nodes missing from file (and not marked remove): {sorted(missing)}")
-            return False
-
-        # 僅對「保留的行」檢查縮排跳躍與父子鏈
-        parent_of_new = {name: None for name in kept_names}
-        stack = []  # (depth, name)
-
-        for depth, name, _ in kept_lines:
+        # Build the tree
+        for depth, nm in parsed:
+            _ensure_node(nm)
             if depth > len(stack):
-                vlog(
-                    f"read_txt: invalid indentation jump for '{name}' "
-                    f"(depth {depth} after stack depth {len(stack)})."
-                )
-                return False
-
+                raise ValueError(f"Invalid indentation jump at '{nm}': depth {depth} after stack depth {len(stack)}")
             while len(stack) > depth:
                 stack.pop()
+            parent = stack[-1][1] if stack else None
+            if parent:
+                # parent must exist
+                _ensure_node(parent)
+                # link
+                self.nodes[nm].parent = parent
+                if nm not in self.nodes[parent].children:
+                    self.nodes[parent].children.append(nm)
+            stack.append((depth, nm))
 
-            if depth > 0:
-                if not stack:
-                    vlog(f"read_txt: no parent for '{name}' at depth {depth}.")
-                    return False
-                parent_of_new[name] = stack[-1][1]
-
-            stack.append((depth, name))
-
-
-        # 收集改名請求（old -> new）
-        rename_map = {}
-        for _, old, new in kept_lines:
-            if new:
-                old_clean = clean_phrase(old)
-                new_clean = clean_phrase(new)
-                rename_map[old_clean] = new_clean
-
-        # 改名衝突檢查
-        # 1. 目標重複
-        targets = [t for t in rename_map.values() if t not in (None, "")]
-        dups_targets = {x for x in targets if targets.count(x) > 1}
-        if dups_targets:
-            vlog(f"read_txt: duplicate rename targets: {sorted(dups_targets)}")
-            return False
-        
-        # 2. 目標與現有/未刪除節點衝突（允許 no-op: old==new）
-        for old, new in rename_map.items():
-            if old == new:
+        # 4) Apply alias directives from the TOP block
+        for name, (_desc, alias_tgt) in top_specs.items():
+            if not alias_tgt:
                 continue
-            if (new in self.nodes) and (new != old):
-                vlog(f"read_txt: rename target '{new}' already exists.")
-                return False
-            if new in removed:
-                vlog(f"read_txt: rename target '{new}' is being removed.")
-                return False
-
-        # 通過驗證：套用更新（原子性）
-        # 先記錄舊父節點用於 logging
-        old_parent_name = {
-            n.name: (n.parent.name if n.parent else None) for n in self.nodes.values()
-        }
-
-        # 移除節點
-        if removed:
-            vlog(f"read_txt: removed {len(removed)} node(s): {sorted(removed)}")
-        try:
-            for r in removed:
-                self.nodes.pop(r, None)
-        except Exception as e:
-            vlog(f"read_txt: failed to remove nodes: {e}")
-            return False
-        
-        # 改名節點
-        try:
-            for old, new in rename_map.items():
-                if old == new:
-                    continue  # no-op
-                if old not in self.nodes:
-                    vlog(f"read_txt: rename source '{old}' not found (maybe removed?)")
-                    return False
-                node = self.nodes.pop(old)
-                #node.aliases.add(old)   # 舊名保留成 alias (optional)
-                node.name = new
-                node.node_id = new 
-                self.nodes[new] = node
-        except Exception as e:
-            vlog(f"read_txt: failed to apply renames: {e}")
-            return False
-
-
-        # 重新連線（先清空）
-        for node in self.nodes.values():
-            node.parent = None
-            node.children.clear()
-
-        def _m(name: Optional[str]) -> Optional[str]:
-            if name is None:
-                return None
-            return rename_map.get(name, name)
-        
-        # 重建父子
-        try:
-            for child_name, p_name in parent_of_new.items():
-                child_name = _m(child_name)
-                p_name = _m(p_name)
-
-                child = self.nodes[child_name]
-                if p_name is None:
-                    child.parent = None
+            if alias_tgt in self.nodes:
+                # If the feature exists as a standalone node, merge it into alias_tgt
+                if name in self.nodes:
+                    # detach from its parent
+                    parent = self.nodes[name].parent
+                    if parent and name in self.nodes[parent].children:
+                        self.nodes[parent].children.remove(name)
+                    # transfer aliases (include its own name)
+                    self.nodes[alias_tgt].aliases.add(name)
+                    self.nodes[alias_tgt].aliases.update(self.nodes[name].aliases)
+                    # drop the node
+                    del self.nodes[name]
                 else:
-                    parent = self.nodes[p_name]
-                    child.parent = parent
-                    parent.children[child_name] = child
-        except Exception as e:
-            vlog(f"read_txt: failed to apply relationships: {e}")
-            return False
+                    # node didn't exist; just add alias to target
+                    self.nodes[alias_tgt].aliases.add(name)
+            else:
+                # alias target not found in structure; create/ensure alias source as ROOT, then leave as-is
+                if name not in self.nodes:
+                    self.nodes[name] = OntologyNode(name=name, description=_desc_for(name))
 
-        # 移動紀錄：舊父 != 新父
-        for name in kept_names:
-            old_p = old_parent_name.get(name, None)
-            new_p = parent_of_new.get(name, None)
-            if old_p != new_p:
-                vlog(f"read_txt: change parent node for '{name}': {old_p} -> {new_p}")
-
-        return True
-
-def extract_feature_mentions(text: str, ontology: Ontology = None, dset = None, model="openai") -> List[Tuple[str, float]]:
-    hint_str = ', '.join(ontology.feature_hints(text)) if ontology else []
-
-    if dset == 'yelp':
-        domain = 'restaurant'
-        cares = 'service, food, timing, pricing, experience, etc.'
-    elif dset == 'amazon':
-        domain = 'product'
-        cares = 'build quality, ease of use, packaging, delivery experience, pricing, performance, compatibility, aesthetics, etc.'
-    else:
-        domain = 'general'
-        cares = 'anything.'
-
-    prompt = f"""
-You are a careful and accurate reviewer analysis assistant.
-
-You are analyzing a {domain} review to extract key features that the user evaluated. Follow this two-step process:
-Step 1: Identify distinct feature concepts described in the review — what aspects did the user seem to care about? These could relate to {cares}
-Step 2: For each concept, provide:
-- A short, lowercase phrase that neutrally names the feature (e.g. use "wait time" not "long wait time")
-- A one-sentence abstract definition that clearly explains what the feature refers to in general. Briefly describe what a positive and a negative score would mean for that feature (e.g., “short wait times are positive; long delays are negative”)
-- A sentiment score between -1.0 and +1.0 indicating how the feature is portrayed in this specific review
-
-If relevant, align your phrasing with "Known Features". Otherwise, invent a reasonable new phrase.
-### Known Features
-{hint_str}
-
-### Review
-{text.strip()}
-
-### Output format:
-feature name | definition | score (float between -1.0 and 1.0)
-"""
-    response = query_llm(prompt, model=model)
-
-    results = []
-    for line in response.strip().splitlines():
-        if "|" in line:
-            try:
-                parts = line.split("|")
-                phrase = clean_phrase(parts[0])
-                definition = parts[1].strip()
-                score = float(parts[2].strip())
-                results.append((phrase, definition, score))
-            except Exception:
+        # 5) Ensure top-block features without alias targets are present (if not placed in structure)
+        for name, (desc, alias_tgt) in top_specs.items():
+            if alias_tgt:
                 continue
-    return results
-
-def human_in_the_loop_update(new_since_refine: int, new_features: List[str], update_cnt: int, ontology: Ontology = None) -> None:
-    ontology.save_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"), new_features)
-    print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology {update_cnt}進行微調（標記 * 為新增 feature），完成後按 Enter 繼續...")
-    input()
-    valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
-    while valid == False:
-        print(f"\n>>> 微調出錯請重試，完成後按 Enter 繼續...")
-        input()
-        valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
-
-### --- Main Ontology Building Function --- ###
-def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontology:
-    review_cnt = len(reviews)
-
-    node_cnt = []
-    new_since_refine = 0
-    new_features = []
-    update_cnt = 0
-
-    ontology = Ontology()
-    # 基本特徵
-    ontology.add_or_update_node("None", "food quality", "Overall quality assessment of foods", 0)
-    ontology.add_or_update_node("None", "price", "All pricing and value-related aspects", 0)
-    ontology.add_or_update_node("None", "environment", "Physical and ambient characteristics of the establishment", 0)
-    ontology.add_or_update_node("None", "service", "All service-related experiences and interactions", 0)
-
-    # 次要但重要的特徵
-    ontology.add_or_update_node("None", "convenience", "Ease of access and use of facilities", 0)
-    ontology.add_or_update_node("None", "comfort", "Physical and emotional comfort aspects", 0)
-    ontology.add_or_update_node("None", "accessibility", "How easy it is to access and use various features", 0)
-
-    for i, r in tqdm(enumerate(reviews), total=review_cnt, desc="Process reviews"):
-        feature_scores = extract_feature_mentions(r["text"], ontology, args.dset)
-        for phrase, desc, score in feature_scores:
-            is_new = ontology.add_or_update_node(r["review_id"], clean_phrase(phrase), desc, score)
-            if is_new:
-                new_since_refine += 1
-                new_features.append(clean_phrase(phrase))
-
-        # 每累積到 K 個新節點，就暫停並提示：  
-        if new_since_refine >= K or i == review_cnt - 1:
-            human_in_the_loop_update(new_since_refine, new_features, update_cnt, ontology)
-            new_since_refine = 0
-            new_features = []
-            update_cnt += 1
-        
-        node_cnt.append(len(ontology.nodes))
-    
-    # 最後存檔
-    ontology.save_json(Path("cache/ontology_human_in_the_loop.json"))
-    with open("node_cnt_human_in_the_loop.json", "w") as fp:
-        json.dump(node_cnt, fp)
-    return ontology
+            if name not in self.nodes:
+                self.nodes[name] = OntologyNode(name=name, description=desc or _desc_for(name))
+            else:
+                # update description if empty
+                if not self.nodes[name].description and desc:
+                    self.nodes[name].description = desc

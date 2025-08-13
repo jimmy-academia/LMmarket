@@ -16,9 +16,6 @@ M = 10  # Max children under a root before reordering
 
 ### --- Feature + Sentiment Extraction --- ###
 def extract_feature_mentions(text, ontology=None, dset = None, model="openai"):
-    hints = ontology.feature_hints() if ontology else []
-    hint_str = f"Known features to look for include: {', '.join(hints)}." if hints else ""
-
     if dset == 'yelp':
         domain = 'restaurant'
         cares = 'service, food, timing, pricing, experience, etc.'
@@ -43,7 +40,9 @@ Step 2: For each general concept, provide:
 - A one-sentence abstract definition that clearly explains what the feature refers to in general. Briefly describe what a positive and a negative score would mean for that feature (e.g., “short wait times are positive; long delays are negative”)
 - A sentiment score between -1.0 and +1.0 indicating how the feature is portrayed in this specific review
 
-If relevant, align your phrasing with known features: {hint_str}
+Aim to align your phrasing with one of the current features if relevant:
+{str(ontology)}
+
 Otherwise, invent a **general-purpose** phrase — avoid overly specific or one-off descriptions.
 
 Be precise. Avoid using the same phrase for unrelated meanings.
@@ -69,56 +68,41 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def process_feature_data(ontology, reviews):
-    feature_data = []
-    vlog('ontology class initialized')
 
-    count = 0
-    for r in reviews:
-        review_id, text = r["review_id"], r["text"]
-        vlog("\n" + "="*60)
-        vlog(f"Review: {text}")
-        feature_scores = extract_feature_mentions(text, ontology, args.dset)
-        vlog(f"Extracted Features: {feature_scores}")
-        feature_data.append([review_id, feature_scores])
-
-        for phrase, description, score in feature_scores:
-            phrase = clean_phrase(phrase)
-            ontology.add_or_update_node(review_id, phrase, description, score)
-
-        vlog("\nOntology after processing this review:")
-        if VERBOSE:
-            print(ontology)
-
-
-        # ppause('finished 1 review')
-
-        count += 1
-        if count == 50:
-            break
-
-    return feature_data
-
+'''
+Main loop:
+    if cache exist and args.cache_feature : use cached feature
+    else use new
+'''
 def build_ontology_by_reviews(args, reviews):
-    feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
+    # feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
     ontology = Ontology()
 
-    if feature_cache_path.exists():
-        feature_data = loadj(feature_cache_path)
-
+    if args.use_feature_cache and args.feature_cache_path.exists():
+        feature_data = loadj(args.feature_cache_path)
         for review_id, feature_scores in feature_data:
             for phrase, description, score in feature_scores:
                 phrase = clean_phrase(phrase)
                 ontology.add_or_update_node(review_id, phrase, description, score)
 
     else:
-        feature_data = process_feature_data(ontology, reviews)
-        dumpj(feature_cache_path, feature_data)
+        feature_data = []
+        for r in reviews:
+            review_id, text = r["review_id"], r["text"]
+            vlog("\n" + "="*60)
+            vlog(f"Review: {text}")
+            feature_scores = extract_feature_mentions(text, ontology, args.dset)
+            vlog(f"Extracted Features: {feature_scores}")
+            feature_data.append([review_id, feature_scores])
+
+            for phrase, description, score in feature_scores:
+                phrase = clean_phrase(phrase)
+                ontology.add_or_update_node(review_id, phrase, description, score)
+
+            vlog(f"\nOntology after processing this review:\n {str(ontology)}")
+            dumpj(args.feature_cache_path, feature_data)
       
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
     print(f"Ontology saved to {output_path} with {len(ontology.nodes)} nodes.")
     return ontology
-
-def build_ontology_by_users_and_items():
-    pass
