@@ -1,4 +1,4 @@
-from dataset.ontology import build_ontology_by_reviews
+from dataset.build_features import build_ontology_by_reviews
 from pathlib import Path
 import argparse
 
@@ -93,12 +93,15 @@ def test_restaurant_features():
 
     # Create args for build_ontology_by_reviews
     args = argparse.Namespace()
+    args.use_feature_cache = False
+    args.feature_cache_path = Path("./cache/tmp")
     args.dset = 'yelp'  # Using yelp dataset configuration
     
     # Build ontology from reviews with human-in-the-loop refinement
     # Will pause every K=10 new features for manual review
-    ont = build_ontology_by_reviews(args, reviews, K=3)
+    ont = build_ontology_by_reviews(args, reviews)
     
+    '''
     # Test search functionality
     test_queries = [
         "The waiter was very friendly and brought our food quickly",
@@ -113,7 +116,7 @@ def test_restaurant_features():
         print("Top 3 related features:")
         for score, node in results[:3]:
             print(f"- {node.name} (similarity: {score:.3f})")
-    
+    '''
     print("\nTest completed successfully!")
 
 if __name__ == "__main__":

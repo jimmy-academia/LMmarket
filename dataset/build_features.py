@@ -5,21 +5,17 @@ from utils import vlog, ppause
 from utils import readf
 from utils import dumpj, loadj
 from utils import clean_phrase
-from utils import VERBOSE
 
 from llm import query_llm
 from debug import check
 from functools import partial
 
-from .ontology import Ontology
+from .ontology_new import Ontology, OntologyNode
 
 M = 10  # Max children under a root before reordering
 
 ### --- Feature + Sentiment Extraction --- ###
 def extract_feature_mentions(text, ontology=None, dset = None, model="openai"):
-    hints = ontology.feature_hints() if ontology else []
-    hint_str = f"Known features to look for include: {', '.join(hints)}." if hints else ""
-
     if dset == 'yelp':
         domain = 'restaurant'
         cares = 'service, food, timing, pricing, experience, etc.'
@@ -44,7 +40,9 @@ Step 2: For each general concept, provide:
 - A one-sentence abstract definition that clearly explains what the feature refers to in general. Briefly describe what a positive and a negative score would mean for that feature (e.g., “short wait times are positive; long delays are negative”)
 - A sentiment score between -1.0 and +1.0 indicating how the feature is portrayed in this specific review
 
-If relevant, align your phrasing with known features: {hint_str}
+Aim to align your phrasing with one of the current features if relevant:
+{str(ontology)}
+
 Otherwise, invent a **general-purpose** phrase — avoid overly specific or one-off descriptions.
 
 Be precise. Avoid using the same phrase for unrelated meanings.
@@ -70,57 +68,56 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def process_feature_data(args, ontology: Ontology, reviews):
-    feature_data = []
-    vlog('ontology class initialized')
 
-    count = 0
-    for r in reviews:
-        review_id, text = r["review_id"], r["text"]
-        vlog("\n" + "="*60)
-        vlog(f"Review: {text}")
-        feature_scores = extract_feature_mentions(text, ontology, args.dset)
-        vlog(f"Extracted Features: {feature_scores}")
-        feature_data.append([review_id, feature_scores])
-
-        for phrase, description, score in feature_scores:
-            phrase = clean_phrase(phrase)
-            ontology.add_or_update_node(review_id, phrase, description, score)
-
-        vlog("\nOntology after processing this review:")
-        if VERBOSE:
-            print(ontology)
-
-
-        # ppause('finished 1 review')
-
-        count += 1
-        if count == 50:
-            break
-
-    return feature_data
-
+'''
+Main loop:
+    if cache exist and args.cache_feature : use cached feature
+    else use new
+'''
 def build_ontology_by_reviews(args, reviews):
-    feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
+    # feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
     ontology = Ontology()
 
-    # Already processed features using llm?
-    if feature_cache_path.exists():
-        feature_data = loadj(feature_cache_path)
+    # Add predefined root features
+    root_features = [
+        ("food_quality", "Overall quality assessment of foods, including freshness, flavor, and presentation."),
+        ("price", "All pricing and value-related aspects, such as cost, value for money, and payment options."),
+        ("environment", "Physical and ambient characteristics of the establishment, like cleanliness, ambiance, and decor."),
+        ("service", "All service-related experiences, including staff attitude, responsiveness, and accuracy."),
+        ("variety", "Range and diversity of offerings on the menu."),
+        ("convenience", "Ease of access and use of facilities, such as location, hours, and ordering process."),
+        ("comfort", "Physical and emotional comfort aspects, like seating, space, and temperature."),
+        ("experience", "Overall satisfaction and subjective aspects of the dining experience.")
+    ]
+    for name, desc in root_features:
+        if name not in ontology.nodes:
+            ontology.nodes[name] = OntologyNode(name=name, description=desc)
 
+    if args.use_feature_cache and args.feature_cache_path.exists():
+        feature_data = loadj(args.feature_cache_path)
         for review_id, feature_scores in feature_data:
             for phrase, description, score in feature_scores:
                 phrase = clean_phrase(phrase)
                 ontology.add_or_update_node(review_id, phrase, description, score)
 
     else:
-        feature_data = process_feature_data(args, ontology, reviews)
-        dumpj(feature_cache_path, feature_data)
+        feature_data = []
+        for r in reviews:
+            review_id, text = r["review_id"], r["text"]
+            vlog("\n" + "="*60)
+            vlog(f"Review: {text}")
+            feature_scores = extract_feature_mentions(text, ontology, args.dset)
+            vlog(f"Extracted Features: {feature_scores}")
+            feature_data.append([review_id, feature_scores])
+
+            for phrase, description, score in feature_scores:
+                phrase = clean_phrase(phrase)
+                ontology.add_or_update_node(review_id, phrase, description, score)
+
+            vlog(f"\nOntology after processing this review:\n {str(ontology)}")
+            dumpj(args.feature_cache_path, feature_data)
       
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
-    print(f"\nOntology saved to {output_path} with {len(ontology.nodes)} nodes.")
+    print(f"Ontology saved to {output_path} with {len(ontology.nodes)} nodes.")
     return ontology
-
-def build_ontology_by_users_and_items():
-    pass

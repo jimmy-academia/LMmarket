@@ -81,4 +81,20 @@ vlog = partial(vprint, flag=VERBOSE)
 ppause = partial(pause_if, flag=PAUSE)
 
 def clean_phrase(phrase):
-    return phrase.lower().strip("* ").split(". ")[-1].strip()
+    return phrase.lower().strip("* ").split(". ")[-1].strip().replace("*", "").strip().replace(" ", "_")
+
+
+def version_path(path):
+    path = Path(path)
+    if not path.exists():
+        return path
+
+    count = 1
+    while True:
+        new_name = f"{path.name}.{count}"
+        new_path = path.with_name(new_name)
+        if not new_path.exists():
+            return new_path
+        count += 1
+
+        

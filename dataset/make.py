@@ -6,7 +6,7 @@ import argparse
 
 from utils import load_make
 from .yelp import load_yelp_data
-from .ontology import build_ontology_by_reviews
+from .build_features import build_ontology_by_reviews
 
 def main(args):
     
@@ -29,11 +29,14 @@ def main(args):
     ITEMS = data["ITEMS"]
     REVIEWS = data["REVIEWS"]
     if args.sample:
+        '''
         USERS = USERS[:1]
         ITEMS = ITEMS[:1]
         used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
                           {rid for i in ITEMS for rid in i["review_ids"]}
         REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
+        '''
+        REVIEWS = REVIEWS[:100]  # Sample 100 reviews for testing
 
     # 2. construct feature ontology (with LLM)
     output = build_ontology_by_reviews(args, REVIEWS)
