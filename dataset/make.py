@@ -30,9 +30,13 @@ def main(args):
     if args.sample:
         USERS = USERS[:20]
         ITEMS = ITEMS[:20]
-        used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
-                          {rid for i in ITEMS for rid in i["review_ids"]}
-        REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
+    
+    used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
+                      {rid for i in ITEMS for rid in i["review_ids"]}
+    REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
+
+    print(len(REVIEWS))
+    input('pause')
 
     # 2. construct feature ontology (with LLM)
     output = build_ontology_by_reviews(args, REVIEWS)
