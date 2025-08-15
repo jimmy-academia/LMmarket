@@ -36,7 +36,7 @@ def main(args):
                           {rid for i in ITEMS for rid in i["review_ids"]}
         REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
         '''
-        REVIEWS = REVIEWS[:100]  # Sample 100 reviews for testing
+        REVIEWS = REVIEWS[:200]  # Sample 200 reviews for testing
 
     # 2. construct feature ontology (with LLM)
     output = build_ontology_by_reviews(args, REVIEWS)

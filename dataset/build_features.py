@@ -75,23 +75,35 @@ Main loop:
     else use new
 '''
 def build_ontology_by_reviews(args, reviews):
-    # feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
-    ontology = Ontology()
+    log_path = Path("cache/review_log.txt")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    ontology = Ontology(review_log_path=log_path)
 
-    # Add predefined root features
-    root_features = [
-        ("food_quality", "Overall quality assessment of foods, including freshness, flavor, and presentation."),
-        ("price", "All pricing and value-related aspects, such as cost, value for money, and payment options."),
-        ("environment", "Physical and ambient characteristics of the establishment, like cleanliness, ambiance, and decor."),
-        ("service", "All service-related experiences, including staff attitude, responsiveness, and accuracy."),
-        ("variety", "Range and diversity of offerings on the menu."),
-        ("convenience", "Ease of access and use of facilities, such as location, hours, and ordering process."),
-        ("comfort", "Physical and emotional comfort aspects, like seating, space, and temperature."),
-        ("experience", "Overall satisfaction and subjective aspects of the dining experience.")
-    ]
-    for name, desc in root_features:
-        if name not in ontology.nodes:
-            ontology.nodes[name] = OntologyNode(name=name, description=desc)
+    # Initialize Log File
+    with log_path.open("w", encoding="utf-8") as f:
+        f.write("========================================\n")
+        f.write("=   Ontology Review Log\n")
+        f.write("========================================\n\n")
+        f.write("### Initial Root Structure ###\n\n")
+
+    # Add predefined root features using a recursive helper function
+    root_features = loadj("dataset/preload_features.json")
+
+    def add_nodes_recursively(node_dict, parent_name=None):
+        for name, data in node_dict.items():
+            description = data.get("description", "")
+            ontology.add_node(name=name, description=description, parent_name=parent_name)
+            
+            children = data.get("children")
+            if children:
+                add_nodes_recursively(children, parent_name=name)
+
+    add_nodes_recursively(root_features)
+
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(f"{str(ontology)}")
+        f.write("\n---\n")
 
     if args.use_feature_cache and args.feature_cache_path.exists():
         feature_data = loadj(args.feature_cache_path)
@@ -117,7 +129,16 @@ def build_ontology_by_reviews(args, reviews):
             vlog(f"\nOntology after processing this review:\n {str(ontology)}")
             dumpj(args.feature_cache_path, feature_data)
       
+    ontology.flush_pending_features()
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
     print(f"Ontology saved to {output_path} with {len(ontology.nodes)} nodes.")
+
+    # Append final progress report to the log
+    processed_count = len(reviews)
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write("\n" + "="*10 + " Final Ontology Structure " + "="*10 + "\n")
+        f.write(f"{str(ontology)}")
+        f.write(f"\n\n[PROGRESS] Processed {processed_count}/3707813({(processed_count/3707813)*100:.2%}) reviews.\n")
+
     return ontology
