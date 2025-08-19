@@ -1,13 +1,14 @@
 ## python -m dataset.make --sample --dset yelp
 ## python -m dataset.make --sample
 
+import os
 from pathlib import Path
 import argparse
 
 from utils import load_make
 from .yelp import load_yelp_data
 from .build_features import build_ontology_by_reviews
-from .build_profiles import main as build_profiles
+from .build_benchmark import build_benchmark, build_benchmark_tmp
 
 def main(args):
     
@@ -29,18 +30,32 @@ def main(args):
     USERS = data["USERS"]
     ITEMS = data["ITEMS"]
     REVIEWS = data["REVIEWS"]
+    rid2review = {r['review_id']: r for r in REVIEWS}
     if args.sample:
         USERS = USERS[:20]
         ITEMS = ITEMS[:20]
         # REVIEWS = REVIEWS[:200]  # Sample 200 reviews for testing
 
-    used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
-                      {rid for i in ITEMS for rid in i["review_ids"]}
-    REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
+        # used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
+        #                   {rid for i in ITEMS for rid in i["review_ids"]}
+        # REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
+
+        used_rids = {(rid, "USER", u['user_id']) for u in USERS for rid in u["review_ids"][:10]} | \
+                    {(rid, "ITEM", i['business_id']) for i in ITEMS for rid in i["review_ids"][:10]}
+        review_type_id_pairs = [(rid2review[rid], type_, id) for rid, type_, id in used_rids]
 
     # 2. construct feature ontology (with LLM)
-    output = build_ontology_by_reviews(args, REVIEWS)
-    build_profiles()
+    ontology_path = "cache/ontology_human_in_the_loop.json"
+    if not os.path.exists(ontology_path):
+        output = build_ontology_by_reviews(args, review_type_id_pairs)
+    print("make: ontology completed")
+
+    if not os.path.exists("cache/benchmark.json"):
+        build_benchmark(USERS, ITEMS, REVIEWS, ontology_path)
+    if not os.path.exists("cache/new/benchmark.json"):
+        build_benchmark_tmp(args)
+    print("make: benchmark completed")
+
 
     # 3. final user profile, user request, and item profile
 
