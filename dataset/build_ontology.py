@@ -13,6 +13,8 @@ from functools import partial
 
 from .ontology import Ontology
 
+from tqdm import tqdm
+
 M = 10  # Max children under a root before reordering
 
 ### --- Feature + Sentiment Extraction --- ###
@@ -77,7 +79,36 @@ Main loop:
 '''
 def build_ontology_by_reviews(args, reviews):
     # feature_cache_path = Path(f'cache/{args.dset}_feature_score.json')
-    ontology = Ontology()
+    
+    log_path = Path("cache/review_log.txt")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    ontology = Ontology(review_log_path=log_path)
+
+    # Initialize Log File
+    with log_path.open("w", encoding="utf-8") as f:
+        f.write("========================================\n")
+        f.write("=   Ontology Review Log\n")
+        f.write("========================================\n\n")
+        f.write("### Initial Root Structure ###\n\n")
+
+    # Add predefined root features using a recursive helper function
+    root_features = loadj("dataset/preload_features.json")
+
+    def add_nodes_recursively(node_dict, parent_name=None):
+        for name, data in node_dict.items():
+            description = data.get("description", "")
+            ontology.add_node(name=name, description=description, parent_name=parent_name)
+            
+            children = data.get("children")
+            if children:
+                add_nodes_recursively(children, parent_name=name)
+
+    add_nodes_recursively(root_features)
+
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(f"{str(ontology)}")
+        f.write("\n---\n")
 
     if args.use_feature_cache and args.feature_cache_path.exists():
         feature_data = loadj(args.feature_cache_path)
@@ -88,7 +119,7 @@ def build_ontology_by_reviews(args, reviews):
 
     else:
         feature_data = []
-        for r in reviews:
+        for r in tqdm(reviews, desc="Processing Reviews"):
             review_id, text = r["review_id"], r["text"]
             vlog("\n" + "="*60)
             vlog(f"Review: {text}")
@@ -101,9 +132,21 @@ def build_ontology_by_reviews(args, reviews):
                 ontology.add_or_update_node(review_id, phrase, description, score)
 
             vlog(f"\nOntology after processing this review:\n {str(ontology)}")
-            dumpj(args.feature_cache_path, feature_data)
+            # dumpj(args.feature_cache_path, feature_data)
+            dumpj("cache/review_to_features.json",  ontology.review2node_id_score)
       
+    ontology.flush_pending_features()
     output_path = Path("cache") / "ontology.json"
     ontology.save(output_path)
     print(f"Ontology saved to {output_path} with {len(ontology.nodes)} nodes.")
+    # Append final progress report to the log
+    processed_count = len(reviews)
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write("\n" + "="*10 + " Final Ontology Structure " + "="*10 + "\n")
+        f.write(f"{str(ontology)}")
+        f.write(f"\n\n[PROGRESS] Processed {processed_count}/3707813({processed_count/3707813:.2%}) reviews.\n")
+
+    #review_feature_map = ontology.review2node_id_score
+    #dumpj("cache/review_to_features.json", review_feature_map)
+
     return ontology
