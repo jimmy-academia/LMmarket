@@ -3,8 +3,7 @@
 import argparse
 from dataset import make
 from utils import version_path
-
-from scheme import base
+from scheme import setup_scheme
 
 def main():
     print("Hello from LMmarket/main.py!")

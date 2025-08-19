@@ -2,10 +2,12 @@
 ## python -m dataset.make --sample
 
 from pathlib import Path
+import argparse
 
 from utils import load_make
 from .yelp import load_yelp_data
-from .build_ontology import build_ontology_by_reviews
+from .build_features import build_ontology_by_reviews
+from .build_profiles import main as build_profiles
 
 def main(args):
     
@@ -30,16 +32,15 @@ def main(args):
     if args.sample:
         USERS = USERS[:20]
         ITEMS = ITEMS[:20]
-    
+        # REVIEWS = REVIEWS[:200]  # Sample 200 reviews for testing
+
     used_review_ids = {rid for u in USERS for rid in u["review_ids"]} | \
                       {rid for i in ITEMS for rid in i["review_ids"]}
     REVIEWS = [r for r in REVIEWS if r["review_id"] in used_review_ids]
 
-    print(len(REVIEWS))
-    input('pause')
-
     # 2. construct feature ontology (with LLM)
     output = build_ontology_by_reviews(args, REVIEWS)
+    build_profiles()
 
     # 3. final user profile, user request, and item profile
 
