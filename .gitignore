@@ -213,3 +213,9 @@ __marimo__/
 dataset/yelp/
 human_in_loop_ontology_edit.txt
 node_cnt_human_in_the_loop.json
+
+/history
+/sample/test_alias
+/sample/test_build_profiles
+test_alias_resolution.py
+test_build_profils.py

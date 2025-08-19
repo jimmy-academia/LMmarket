@@ -73,6 +73,19 @@ class Ontology:
         self._embed_model = SentenceTransformer("BAAI/bge-small-en")
         self._emb_cache: Dict[str, np.ndarray] = {}  # node_name -> normalized vector
 
+    def _find_main_node(self, name: str) -> Optional[str]:
+        """Find the main node name for a given feature (either direct node or alias)."""
+        # 1) Direct node match
+        if name in self.nodes:
+            return name
+        
+        # 2) Alias match
+        for node_name, node in self.nodes.items():
+            if name in node.aliases:
+                return node_name
+        
+        return None
+
 
     def add_or_update_node(self, review_id: str, phrase: str, description: str, score: float) -> bool:
         """
@@ -88,9 +101,10 @@ class Ontology:
 
         self._processed_reviews_in_session.add(review_id)
         
-        # 1) Exact hit?
-        if name in self.nodes:
-            self.review2node_id_score[review_id].append((name, float(score)))
+        # 1) Check if it's a known feature (node name or alias)
+        main_node = self._find_main_node(name)
+        if main_node:
+            self.review2node_id_score[review_id].append((main_node, float(score)))
             return False
 
         # 2) Queue new feature
@@ -403,7 +417,11 @@ class Ontology:
         # Ensure node factory
         def _ensure_node(name: str):
             if name not in self.nodes:
-                self.nodes[name] = OntologyNode(name=name, description=_desc_for(name))
+                node = OntologyNode(name=name, description=_desc_for(name))
+                # Preserve aliases from old nodes
+                if name in old_nodes:
+                    node.aliases = old_nodes[name].aliases.copy()
+                self.nodes[name] = node
 
         # Build the tree
         for depth, nm in parsed:
@@ -502,7 +520,7 @@ The ontology is a tree. Indentation with tabs (\\t) shows parent-child relations
                     sub_tree_node = self.nodes[chosen_level_2_node]
                     sub_tree_structure = self.__str__(node=sub_tree_node)
 
-                    prompt2 = f"""You are an expert ontology architect. Your task is to intelligently place a new feature within a specific category's sub-tree.
+                    prompt2 = f"""You are an expert ontology architect. Your primary task is to avoid creating duplicate concepts by identifying when a new feature is semantically similar to existing ones.
 
 **Hierarchy Explanation:**
 The sub-tree is shown with indentation. The root of this sub-tree, `{chosen_level_2_node}`, is a Level 2 node.
@@ -519,16 +537,30 @@ The sub-tree is shown with indentation. The root of this sub-tree, `{chosen_leve
 {sub_tree_structure}
 
 **Instructions:**
-Your goal is to place the new feature at the deepest possible level (ideally as a new Level 4 node).
+Your PRIMARY goal is to identify if this new feature represents the same or very similar concept as an existing node.
 
-1.  **Analyze for Placement:**
-    - To place as a **Level 4 node**, find the most suitable Level 3 node in the sub-tree to act as its parent.
-    - If no suitable Level 3 parent exists, the new feature should become a **Level 3 node**. In this case, its parent will be the target category itself, `{chosen_level_2_node}`.
-2.  **Analyze for Aliasing:** If the new feature is simply another name for an *existing* node in the sub-tree, identify it as an alias.
-3.  Based on your analysis, provide your decision in ONE of the following two formats, with no extra text or explanation:
+1.  **FIRST PRIORITY - Check for semantic similarity:**
+    - Does the new feature describe the same underlying concept, quality, or aspect as any existing node?
+    - Consider synonyms, different wordings, or slightly different perspectives of the same concept.
+    - Examples of what should be aliases:
+      * "fast service" vs "quick service" vs "speedy service"
+      * "spicy food" vs "hot food" (in spiciness context) vs "peppery"
+      * "clean tables" vs "tidy dining area" vs "spotless surfaces"
+    - If you find a semantically similar node, respond with: `ALIAS: <existing_node_name>`
 
-    *   **`PARENT: <existing_node_name>`** (The `<existing_node_name>` will be the parent you identified in step 1).
-    *   **`ALIAS: <existing_node_name>`**
+2.  **SECOND PRIORITY - Only if NO similar concept exists:**
+    - If the new feature represents a genuinely NEW concept not covered by existing nodes, then create a new node.
+    - Place it at the deepest appropriate level (ideally Level 4 under a Level 3 parent).
+    - If you find a suitable Level 3 parent, respond with: `PARENT: <level_3_parent_name>`
+    - If no Level 3 parent fits, make it a Level 3 node: `PARENT: {chosen_level_2_node}`
+
+**Decision Rules:**
+- PREFER aliases over new nodes when concepts are similar (even if not identical)
+- Only create new nodes for genuinely distinct concepts
+
+Provide your decision in ONE format with no extra text:
+- `ALIAS: <existing_node_name>` (if semantically similar)
+- `PARENT: <existing_node_name>` (if genuinely new concept)
 
 **Decision:**"""
                     
