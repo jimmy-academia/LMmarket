@@ -10,7 +10,7 @@ from llm import query_llm
 from debug import check
 from functools import partial
 
-from .ontology_new import Ontology, OntologyNode
+from .ontology import Ontology, OntologyNode
 
 from tqdm import tqdm
 
