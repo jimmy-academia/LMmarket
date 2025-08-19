@@ -1,7 +1,7 @@
 import re
 import json
 from pathlib import Path
-from functools import partial
+
 from tqdm import tqdm
 
 def readf(path):
@@ -14,7 +14,7 @@ def writef(path, content):
 
 def get_dset_root():
     path = Path('.dset_root')
-    root = ''
+    root = '/home/user/work/academia'
 
     if path.exists():
         root = readf(path).strip()
@@ -70,31 +70,6 @@ def vprint(msg, flag=True):
     if flag:
         print(msg)
 
-def pause_if(msg="Press Enter to continue...", flag=True):
+def pause_if(flag=True, msg="Press Enter to continue..."):
     if flag:
         input(msg)
-
-### --- Flags --- ###
-VERBOSE = True
-PAUSE = True
-vlog = partial(vprint, flag=VERBOSE)
-ppause = partial(pause_if, flag=PAUSE)
-
-def clean_phrase(phrase):
-    return phrase.lower().strip("* ").split(". ")[-1].strip()
-
-
-def version_path(path):
-    path = Path(path)
-    if not path.exists():
-        return path
-
-    count = 1
-    while True:
-        new_name = f"{path.name}.{count}"
-        new_path = path.with_name(new_name)
-        if not new_path.exists():
-            return new_path
-        count += 1
-
-        
