@@ -7,6 +7,7 @@ import argparse
 from utils import load_make
 from .yelp import load_yelp_data
 from .build_features import build_ontology_by_reviews
+from .build_profiles import main as build_profiles
 
 def main(args):
     
@@ -40,6 +41,7 @@ def main(args):
 
     # 2. construct feature ontology (with LLM)
     output = build_ontology_by_reviews(args, REVIEWS)
+    build_profiles()
 
     # 3. final user profile, user request, and item profile
 
