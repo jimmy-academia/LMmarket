@@ -2,7 +2,7 @@ import json
 
 def get_task_loader(dset):
     if dset == "yelp":
-        with open("cache/new/benchmark.json", "r") as fp:
+        with open("cache/benchmark.json", "r") as fp:
             benchmark = json.load(fp)
         return benchmark
     else:

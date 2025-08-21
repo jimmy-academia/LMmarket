@@ -1,7 +1,8 @@
-## python main.py --sample --dset yelp --scheme random bm25 embed --top_m 5 --top_n 10
+## python main.py --sample --dset yelp --scheme random bm25 embed --top_m 2 --top_n 4
 
 import argparse
 from dataset import make
+from utils import version_path
 from loader import get_task_loader
 from schemes import setup_scheme
 
@@ -9,12 +10,17 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--sample', action='store_true', help="Use a small sample dataset")
+    parser.add_argument('--use_feature_cache', action='store_true', help="Use cached feature")
+    parser.add_argument('--feature_cache_path', type=str, default=None)
     parser.add_argument('--dset', type=str, default='yelp')
     parser.add_argument('--scheme', nargs='*', type=str, help="Evaluated scheme(s)")
     parser.add_argument('--top_m', type=int, default=3, help="Select first 'm' items in ground truth ranking")
     parser.add_argument('--top_n', type=int, default=5, help="Retrieve 'n' items for evaluation")
     args = parser.parse_args()
     
+    if args.feature_cache_path is None:
+        args.feature_cache_path = version_path(f'cache/{args.dset}_feature_score.json')
+
     print("Hello from lmmarket!")
     make.main(args)
     

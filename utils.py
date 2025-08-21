@@ -1,7 +1,7 @@
 import re
 import json
 from pathlib import Path
-
+from functools import partial
 from tqdm import tqdm
 
 def readf(path):
@@ -73,3 +73,25 @@ def vprint(msg, flag=True):
 def pause_if(flag=True, msg="Press Enter to continue..."):
     if flag:
         input(msg)
+
+### --- Flags --- ###
+VERBOSE = True
+PAUSE = False
+vlog = partial(vprint, flag=VERBOSE)
+ppause = partial(pause_if, flag=PAUSE)
+
+def clean_phrase(phrase: str) -> str:
+    return phrase.lower().strip("* ").split(". ")[-1].strip()
+
+def version_path(path):
+    path = Path(path)
+    if not path.exists():
+        return path
+
+    count = 1
+    while True:
+        new_name = f"{path.name}.{count}"
+        new_path = path.with_name(new_name)
+        if not new_path.exists():
+            return new_path
+        count += 1

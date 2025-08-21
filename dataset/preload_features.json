@@ -1,0 +1,291 @@
+{
+  "environment": {
+    "description": "",
+    "children": {
+      "ambiance": {
+        "description": "",
+        "children": {
+          "interior_design": { "description": "", "children": {} },
+          "lighting": { "description": "", "children": {} },
+          "view": { "description": "", "children": {} },
+          "theme_and_concept": { "description": "", "children": {} }
+        }
+      },
+      "cleanliness": {
+        "description": "",
+        "children": {
+          "dining_area_cleanliness": { "description": "", "children": {} },
+          "restroom_hygiene": { "description": "", "children": {} },
+          "tableware_cleanliness": { "description": "", "children": {} }
+        }
+      },
+      "comfort": {
+        "description": "",
+        "children": {
+          "crowd_level": { "description": "", "children": {} },
+          "temperature_and_air_quality": { "description": "", "children": {} },
+          "noise_level": { "description": "", "children": {} },
+          "smoking_and_pet_policy": { "description": "", "children": {} }
+        }
+      },
+      "layout_and_space": {
+        "description": "",
+        "children": {
+          "seating_arrangement": { "description": "", "children": {} },
+          "environment_layout": { "description": "", "children": {} },
+          "drive_through_design": { "description": "", "children": {} }
+        }
+      },
+      "amenities": {
+        "description": "",
+        "children": {
+          "restroom_availability": { "description": "", "children": {} },
+          "family_friendly_features": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "food_and_beverage": {
+    "description": "",
+    "children": {
+      "drink_quality": {
+        "description": "",
+        "children": {
+          "drink_flavor": { "description": "", "children": {} },
+          "drink_temperature": { "description": "", "children": {} },
+          "drink_presentation": { "description": "", "children": {} }
+        }
+      },
+      "food_quality": {
+        "description": "",
+        "children": {
+          "flavor_and_balance": { "description": "", "children": {} },
+          "freshness": { "description": "", "children": {} },
+          "texture": { "description": "", "children": {} },
+          "temperature": { "description": "", "children": {} }
+        }
+      },
+      "presentation_and_quantity": {
+        "description": "",
+        "children": {
+          "presentation": { "description": "", "children": {} },
+          "packaging_quality": { "description": "", "children": {} },
+          "portion_size": { "description": "", "children": {} }
+        }
+      },
+      "menu": {
+        "description": "",
+        "children": {
+          "variety": { "description": "", "children": {} },
+          "customization_options": { "description": "", "children": {} },
+          "information": { "description": "", "children": {} }
+        }
+      },
+      "serving_and_accuracy": {
+        "description": "",
+        "children": {
+          "serving_timing": { "description": "", "children": {} },
+          "order_accuracy": { "description": "", "children": {} },
+          "customization_accuracy": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "service": {
+    "description": "",
+    "children": {
+      "service_quality": {
+        "description": "",
+        "children": {
+          "attentiveness": { "description": "", "children": {} },
+          "attitude": { "description": "", "children": {} },
+          "knowledge_and_recommendation": { "description": "", "children": {} },
+          "issue_handling": { "description": "", "children": {} },
+          "staff_availability": { "description": "", "children": {} }
+        }
+      },
+      "speed_and_flow": {
+        "description": "",
+        "children": {
+          "wait_time": { "description": "", "children": {} },
+          "table_turnover_efficiency": { "description": "", "children": {} },
+          "queue_management": { "description": "", "children": {} }
+        }
+      },
+      "scope_and_offerings": {
+        "description": "",
+        "children": {
+          "special_request_handling": { "description": "", "children": {} },
+          "additional_offerings": { "description": "", "children": {} },
+          "group_dining_accommodation": { "description": "", "children": {} },
+          "tableware_provision": { "description": "", "children": {} }
+        }
+      },
+      "policy_and_communication": {
+        "description": "",
+        "children": {
+          "communication": { "description": "", "children": {} },
+          "communication_clarity": { "description": "", "children": {} },
+          "policy_clarity": { "description": "", "children": {} },
+          "signage_and_instruction": { "description": "", "children": {} },
+          "seating_policy": { "description": "", "children": {} }
+        }
+      },
+      "management_and_supervision": {
+        "description": "",
+        "children": {
+          "management_engagement": { "description": "", "children": {} },
+          "staffing_management": { "description": "", "children": {} },
+          "issue_response": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "price": {
+    "description": "",
+    "children": {
+      "menu_pricing": {
+        "description": "",
+        "children": {
+          "food_pricing": { "description": "", "children": {} },
+          "drink_pricing": { "description": "", "children": {} },
+          "combo_and_set_pricing": { "description": "", "children": {} }
+        }
+      },
+      "promotions_and_discounts": {
+        "description": "",
+        "children": {
+          "happy_hour_offerings": { "description": "", "children": {} },
+          "promotional_offers": { "description": "", "children": {} },
+          "complimentary_offerings": { "description": "", "children": {} },
+          "promotion_reliability": { "description": "", "children": {} }
+        }
+      },
+      "fairness_and_policy": {
+        "description": "",
+        "children": {
+          "pricing_fairness": { "description": "", "children": {} },
+          "pricing_policy": { "description": "", "children": {} },
+          "policy_accuracy": { "description": "", "children": {} }
+        }
+      },
+      "value_and_transparency": {
+        "description": "",
+        "children": {
+          "value_for_money": { "description": "", "children": {} },
+          "price_transparency": { "description": "", "children": {} },
+          "loyalty_benefits": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "ordering_and_fulfillment": {
+    "description": "",
+    "children": {
+      "reservation_and_seating": {
+        "description": "",
+        "children": {
+          "reservation_availability": { "description": "", "children": {} },
+          "reservation_handling": { "description": "", "children": {} },
+          "seating_management": { "description": "", "children": {} }
+        }
+      },
+      "ordering_process": {
+        "description": "",
+        "children": {
+          "ordering_process": { "description": "", "children": {} },
+          "order_support": { "description": "", "children": {} },
+          "special_handling_of_ordering": { "description": "", "children": {} }
+        }
+      },
+      "operating_hours_and_availability": {
+        "description": "",
+        "children": {
+          "operating_hours_accuracy": { "description": "", "children": {} },
+          "late_night_options": { "description": "", "children": {} }
+        }
+      },
+      "takeout_and_catering": {
+        "description": "",
+        "children": {
+          "takeout_option": { "description": "", "children": {} },
+          "delivery_handling": { "description": "", "children": {} },
+          "catering_option": { "description": "", "children": {} },
+          "pickup_option": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "payment": {
+    "description": "",
+    "children": {
+      "process_and_efficiency": {
+        "description": "",
+        "children": {
+          "payment_handling": { "description": "", "children": {} },
+          "payment_process_efficiency": { "description": "", "children": {} },
+          "payment_speed": { "description": "", "children": {} }
+        }
+      },
+      "options_and_methods": {
+        "description": "",
+        "children": {
+          "payment_options": { "description": "", "children": {} }
+        }
+      },
+      "policy_and_accuracy": {
+        "description": "",
+        "children": {
+          "payment_policy_accuracy": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "location_and_accessibility": {
+    "description": "",
+    "children": {
+      "parking_and_access": {
+        "description": "",
+        "children": {
+          "parking_availability_and_management": { "description": "", "children": {} },
+          "public_transport_access": { "description": "", "children": {} }
+        }
+      },
+      "location_characteristics": {
+        "description": "",
+        "children": {
+          "location_proximity": { "description": "", "children": {} },
+          "environment_location": { "description": "", "children": {} },
+          "surrounding_view": { "description": "", "children": {} }
+        }
+      }
+    }
+  },
+  "customer_experience": {
+    "description": "",
+    "children": {
+      "recommendation_and_loyalty": {
+        "description": "",
+        "children": {
+          "customer_recommendation": { "description": "", "children": {} },
+          "loyalty_program": { "description": "", "children": {} }
+        }
+      },
+      "special_accommodations": {
+        "description": "",
+        "children": {
+          "dietary_accommodation": { "description": "", "children": {} },
+          "allergy_accommodation": { "description": "", "children": {} },
+          "child_friendly_accommodation": { "description": "", "children": {} }
+        }
+      },
+      "events_and_usage": {
+        "description": "",
+        "children": {
+          "private_event_facilities": { "description": "", "children": {} },
+          "visit_duration": { "description": "", "children": {} }
+        }
+      }
+    }
+  }
+}
