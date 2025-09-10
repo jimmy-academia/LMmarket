@@ -25,7 +25,7 @@ def load_yelp_data():
         biz = json.loads(line)
         if biz.get("categories") and "restaurant" in biz["categories"].lower():
             biz_id = biz["business_id"]
-            city = biz.get("city", "X").strip()
+            city = biz.get("city", "X").strip().lower()
             review_count = biz.get("review_count", 0)
 
             all_restaurant_ids.add(biz_id)

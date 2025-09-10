@@ -1,30 +1,66 @@
-## python main.py --sample --dset yelp --scheme random bm25 embed --top_m 5 --top_n 10
+'''
+main.py
+1. foundation processing
+    - process review into natural language features and coresponding embedding (input args.dataset review output ...)
+    - build embedding vector database (?)
+    - conduct clustering
+    - retrieve clusters, assign central theme
+
+2. application stage
+    - todo
+'''
+import faiss
+import numpy as np
+from pathlib import Path
 
 import argparse
-from dataset import make
-from loader import get_task_loader
-from schemes import setup_scheme
+
+from debug import check
+from foundation import process_data, vectorize_embedding
+from utils import load_or_build, readf, dumpj, loadj
 
 def main():
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sample', action='store_true', help="Use a small sample dataset")
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--scheme', nargs='*', type=str, help="Evaluated scheme(s)")
-    parser.add_argument('--top_m', type=int, default=3, help="Select first 'm' items in ground truth ranking")
-    parser.add_argument('--top_n', type=int, default=5, help="Retrieve 'n' items for evaluation")
+    parser.add_argument('--cache_dir', type=str, default='cache')
+    parser.add_argument('--dset_root', type=str, default='.dset_root')
     args = parser.parse_args()
+
+    args.cache_dir = Path(args.cache_dir)
+    args.dset_root = Path(readf(args.dset_root).strip())
+    args.cache_dir.mkdir(exist_ok=True)
+    args.processed_data_path = args.cache_dir/f"processed_{args.dset}_data.json"
     
-    print("Hello from lmmarket!")
-    make.main(args)    
-    if not (args.scheme is None):
-        print(f"Load benchmark dataset")
-        task_loader = get_task_loader(args.dset)
+    DATA = load_or_build(args.processed_data_path, dumpj, loadj, process_data, args)
 
-        print(f"Evaluate schemes {args.scheme} with top_m = {args.top_m}, top_n = {args.top_n}")
-        for scheme in args.scheme:
-            Scheme = setup_scheme(args, task_loader, scheme)
-            Scheme.operate()
+    # for city in DATA['USERS']:
+    #     print(city, len(DATA['USERS'][city]), len(DATA['ITEMS'][city]), len(DATA['REVIEWS'][city]))
+    # input('pause')
 
-if __name__ == "__main__":
+    '''
+    philadelphia 1041 2536 512173
+    indianapolis 362 1098 173652
+    new orleans 280 1200 355692
+    nashville 238 1153 233161
+    tampa 304 1255 208616
+    tucson 289 1100 173804
+    reno 220 770 148916
+    saint louis 176 752 125592
+    '''
+    
+    city = 'saint louis'
+    div_name = f"{args.dset}_{city.replace(' ', '_')}"
+
+    args.meta_path = args.cache_dir/f"meta_{div_name}.json"
+    args.index_path = args.cache_dir/f"index_{div_name}.index"
+    args.vec_path = args.cache_dir/f"vec_{div_name}.npy"
+    args.offset_path = args.cache_dir/f"offset_{div_name}.npy"
+    paths = [args.meta_path, args.index_path, args.vec_path, args.offset_path]
+    cache_fns = [dumpj, faiss.write_index, np.save, np.save]
+    load_fns = [loadj, faiss.read_index, np.load, np.load]
+    load_or_build(paths, cache_fns, load_fns, vectorize_embedding, args, DATA['REVIEWS'][city])
+
+
+
+if __name__ == '__main__':
     main()
