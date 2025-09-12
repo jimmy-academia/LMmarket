@@ -1,5 +1,6 @@
 import re
 import json
+import pickle
 
 def readf(path):
     with open(path, 'r') as f:
@@ -24,29 +25,23 @@ def loadj(filepath):
     with open(filepath) as f:
         return json.load(f)
 
-def _cache_call(cache_fn, path, obj):
-    try:
-        return cache_fn(path, obj) 
-    except:
-        return cache_fn(obj, str(path))
+def dumpp(filepath, obj):
+    with open(filepath, "wb") as f:
+        pickle.dump(obj, f)
 
+def loadp(filepath):
+    with open(filepath, "rb") as f:
+        return pickle.load(f)
 
-def load_or_build(paths, cache_fns, load_fns, build_fn, *args, **kwargs):
-    if not isinstance(paths, (list, tuple)):
-        paths, cache_fns, load_fns = [paths], [cache_fns], [load_fns]
+def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
+    exists = path.exists() if hasattr(path, "exists") else Path(path).exists()
+    if exists:
+        print(f"[load_or_build] >>> {path} exists, loading...")
+        return load_fn(path)
 
-    if all(path.exists() for path in paths):
-        print(f'[load_or_build] >>> {paths} exists, loading...')
-        vals = [loadf(path) for loadf, path in zip(load_fns, paths)]
-        return vals[0] if len(vals) == 1 else vals
-    else:
-        print(f'[load_or_build] >>> {paths} does not exist, building...')
-        results = build_fn(*args, **kwargs)
-        print(f'[load_or_build] >>> saving build result to {paths}...')
-        if not isinstance(results, (list, tuple)):
-            results = [results]
-        for path, result, cache_fn in zip(paths, results, cache_fns):
-            _cache_call(cache_fn, path, result)
-        print(f'[load_or_build] >>> saving complete.')
-        return result
-
+    print(f"[load_or_build] >>> {path} does not exist, building...")
+    result = build_fn(*args, **kwargs)
+    print(f"[load_or_build] >>> saving build result to {path}...")
+    save_fn(path, result)
+    print("[load_or_build] >>> saving complete.")
+    return result

@@ -68,7 +68,7 @@ def _extract_usage(resp):
 
 # ---- query ----
 
-def query_llm(prompt, model="gpt-4.1-mini", temperature=0.1, verbose=False):
+def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -88,7 +88,7 @@ def query_llm(prompt, model="gpt-4.1-mini", temperature=0.1, verbose=False):
     return content
 
 
-async def query_llm_async(prompt, model="gpt-4.1-mini", temperature=0.1, sem=None, verbose=False):
+async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False):
     client = get_async_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 

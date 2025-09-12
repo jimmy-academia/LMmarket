@@ -16,7 +16,7 @@ from pathlib import Path
 import argparse
 
 from debug import check
-from foundation import process_data, vectorize_embedding
+from foundation import process_data, fetch_embedder
 from utils import load_or_build, readf, dumpj, loadj
 from playground.reproducibility import run_reproducibility_experiment
 
@@ -50,21 +50,10 @@ def main():
     '''
     
     city = 'saint louis'
-    div_name = f"{args.dset}_{city.replace(' ', '_')}"
+    args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
 
-    args.meta_path = args.cache_dir/f"meta_{div_name}.json"
-    args.index_path = args.cache_dir/f"index_{div_name}.index"
-    args.vec_path = args.cache_dir/f"vec_{div_name}.npy"
-    args.offset_path = args.cache_dir/f"offset_{div_name}.npy"
-    args.chuncks_path = args.cache_dir/f"chuncks_{div_name}.npy"
-    paths = [args.meta_path, args.index_path, args.vec_path, args.offset_path, args.chuncks_path]
-    cache_fns = [dumpj, faiss.write_index, np.save, np.save, ]
-    load_fns = [loadj, faiss.read_index, np.load, np.load]
-    meta, index, vecs, offsets, chunks = load_or_build(paths, cache_fns, load_fns, vectorize_embedding, args, DATA['REVIEWS'][city])
-
-    index = faiss.read_index(str(args.index_path))
-    vecs = np.load(args.vec_path)
-    run_reproducibility_experiment(DATA['REVIEWS'][city], vecs, index)
+    embedder = fetch_embedder(args, DATA['REVIEWS'][city])
+    run_reproducibility_experiment(embedder)
 
 
 

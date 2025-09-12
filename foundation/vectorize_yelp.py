@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import torch
@@ -9,45 +8,67 @@ from blingfire import text_to_sentences
 from sentence_transformers import SentenceTransformer
 from dataclasses import dataclass
 
+from utils import dumpj, loadj, dumpp, loadp
 import warnings
 # ---------------- Config ----------------
 
-@dataclass
-class Config:
-    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    batch_size: int = 256
-    max_chars: int = 300
-    min_merge: int = 40
-    normalize: bool = True
-    index_type: str = 'hnsw'
 
-# -------------- Main function -------------
+class Yelp_Embedder:
+    def __init__(self, args, reviews):
 
-def vectorize_yelp_embedding(reviews):
-    '''
-    reviews is a list of dict, dict['text'] = 'the review text'
-    '''
-    cfg = Config()
+        self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        self.batch_size = 256
+        self.max_chars = 100
+        self.min_merge = 20
+        self.normalize = True
 
-    reviews = [r['text'] for r in reviews]
-    chunks = [split_to_spans(rtext, cfg.max_chars, cfg.min_merge) for rtext in reviews]
-    flat, offsets = flatten_with_offsets(chunks)
-    vecs = embed_texts(flat, cfg.model_name, cfg.batch_size, cfg.normalize)
-    index = build_index(vecs, cfg)
-    index = faiss.index_gpu_to_cpu(index)
 
-    meta = {
-        "model_name": cfg.model_name,
-        "dim": int(vecs.shape[1]),
-        "n_vectors": int(vecs.shape[0]),
-        "n_reviews": len(chunks),
-        "normalize": bool(cfg.normalize),
-        "paths": {
-            "embeddings": "embeddings.npy",
-            "index": "faiss.index",
-        },
-    }
-    return meta, index, vecs, offsets, chunks
+        self.meta_path = args.cache_dir/f"meta_{args.div_name}.json"
+        self.index_path = args.cache_dir/f"index_{args.div_name}.index"
+        self.vec_path = args.cache_dir/f"vec_{args.div_name}.npy"
+        self.offset_chunks_path = args.cache_dir/f"offset_chunks_{args.div_name}.pkl"
+
+        if not self.meta_path.exists():
+            print("[Yelp_Embedder] >>> meta does not exist. building...")
+            self.build_embeddings(reviews)
+            print("[Yelp_Embedder] >>> saving...")
+            self.save()
+            print("[Yelp_Embedder] >>> saved")
+        else:
+            print("[Yelp_Embedder] >>> meta exists. loading...")
+            self.load()
+            print("[Yelp_Embedder] >>> loaded")
+
+
+    def build_embeddings(self, reviews):
+
+        reviews = [r['text'] for r in reviews]
+        self.chunks = [split_to_spans(rtext, self.max_chars, self.min_merge) for rtext in reviews]
+        flat, self.offsets = flatten_with_offsets(self.chunks)
+        self.vecs = embed_texts(flat, self.model_name, self.batch_size, self.normalize)
+        index = build_index(self.vecs)
+        self.index = faiss.index_gpu_to_cpu(index)
+        self.meta = {
+            "model_name": self.model_name,
+            "dim": int(self.vecs.shape[1]),
+            "n_vectors": int(self.vecs.shape[0]),
+            "n_reviews": len(self.chunks),
+            "normalize": bool(self.normalize),
+        }
+
+    def save(self):
+        dumpj(self.meta_path, self.meta)
+        faiss.write_index(self.index, str(self.index_path))
+        np.save(self.vec_path, self.vecs)
+        dumpp(self.offset_chunks_path, (self.offsets, self.chunks))
+        ## save the files
+
+    def load(self):
+        ## load the files to self.variables
+        self.meta = loadj(self.meta_path)
+        self.index = faiss.read_index(str(self.index_path))
+        self.vecs = np.load(self.vec_path)
+        self.offsets, self.chunks = loadp(self.offset_chunks_path)
 
 
 # -------------- Quick search --------------
@@ -59,25 +80,91 @@ def load_index_and_search(bundle, queries, top_k=10):
 
 # -------------- Modules --------------
 
-def split_to_spans(text, max_chars, min_merge):
+import re
+
+def _smart_wrap_sentence(s: str, max_chars: int):
+    """
+    Split a single (possibly very long) sentence into chunks <= max_chars.
+    Prefer strong punctuation, then weak punctuation/space, else hard cut.
+    """
+    if len(s) <= max_chars:
+        return [s]
+
+    strong = [". ", "! ", "? ", "。", "！", "？", "…"]
+    weak   = ["; ", ": ", ", ", "，", "、", "—", "–", " - ", " "]
+
+    out, i, n = [], 0, len(s)
+    while i < n:
+        # if remaining fits, done
+        if n - i <= max_chars:
+            out.append(s[i:].strip())
+            break
+
+        window = s[i:i+max_chars+1]
+
+        # try strongest breakpoints within window (nearest to the end)
+        cut = max((window.rfind(p) for p in strong), default=-1)
+        if cut == -1:
+            cut = max((window.rfind(p) for p in weak), default=-1)
+
+        if cut == -1:
+            # no good breakpoint; hard cut at max_chars
+            cut = max_chars
+        else:
+            # cut index is at the start of the matched pattern; include it
+            cut += len(window[cut:cut+1])  # keep the punctuation/space edge
+
+        chunk = s[i:i+cut].strip()
+        if chunk: out.append(chunk)
+        i += cut
+        # skip any extra spaces
+        while i < n and s[i].isspace():
+            i += 1
+    return out
+
+
+def split_to_spans(text, max_chars=100, min_merge=40):
+    """
+    1) Sentence-split with blingfire.
+    2) Smart-wrap any sentence > max_chars using punctuation-aware splitting.
+    3) Pack wrapped sentences into spans with max_chars cap.
+    4) Merge tiny spans (< min_merge) with the following one.
+    """
     sents = text_to_sentences(text.strip()).split("\n")
-    spans, buf = [], ""
+
+    # step 1–2: wrap any long sentence first
+    wrapped = []
     for s in sents:
-        if not s: continue
+        s = s.strip()
+        if not s:
+            continue
+        if len(s) > max_chars:
+            wrapped.extend(_smart_wrap_sentence(s, max_chars))
+        else:
+            wrapped.append(s)
+
+    # step 3: pack into spans up to max_chars
+    spans, buf = [], ""
+    for s in wrapped:
         if buf and len(buf) + 1 + len(s) > max_chars:
-            spans.append(buf); buf = s
+            spans.append(buf)
+            buf = s
         else:
             buf = (buf + " " + s).strip() if buf else s
-    if buf: spans.append(buf)
+    if buf:
+        spans.append(buf)
 
-    # Merge tiny spans
+    # step 4: merge tiny spans
     out, i = [], 0
     while i < len(spans):
         if len(spans[i]) < min_merge and i + 1 < len(spans):
-            out.append(spans[i] + " " + spans[i+1]); i += 2
+            out.append((spans[i] + " " + spans[i+1]).strip())
+            i += 2
         else:
-            out.append(spans[i]); i += 1
+            out.append(spans[i])
+            i += 1
     return out
+
 
 def flatten_with_offsets(chunks):
     """Flatten list-of-lists and record start/end offsets for each group."""
@@ -105,32 +192,10 @@ def embed_texts(texts, model_name, batch_size, normalize=True):
     return embs.cpu().numpy().astype("float32")
 
 # -------------- FAISS index --------------
-def build_index(vecs, cfg):
+def build_index(vecs):
     d = vecs.shape[1]
     res = faiss.StandardGpuResources()
     index = faiss.GpuIndexFlatIP(res, d)  # inner product (use L2-normalized vecs for cosine)
     index.add(vecs)
     return index
-
-def build_index_cpu(vecs, cfg):
-    d = vecs.shape[1]
-    if cfg.index_type.upper() == "HNSW":
-        index = faiss.IndexHNSWFlat(d, cfg["hnsw_M"], faiss.METRIC_INNER_PRODUCT)
-        index.hnsw.efConstruction = cfg["hnsw_efConstruction"]
-        index.add(vecs)
-        return index
-    if cfg.index_type.upper() == "IVF-PQ":
-        quant = faiss.IndexHNSWFlat(d, 32, faiss.METRIC_INNER_PRODUCT)
-        index = faiss.IndexIVFPQ(quant, d, cfg["ivf_nlist"], cfg["pq_m"], 8, faiss.METRIC_INNER_PRODUCT)
-        n = vecs.shape[0]
-        if n <= cfg["train_sample"]:
-            train_x = vecs
-        else:
-            rs = np.random.RandomState(123)
-            train_x = vecs[rs.choice(n, size=cfg["train_sample"], replace=False)]
-        index.train(train_x)
-        index.add(vecs)
-        return index
-    raise ValueError("index_type must be 'HNSW' or 'IVF-PQ'")
-
 
