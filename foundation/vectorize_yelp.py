@@ -7,7 +7,6 @@ import faiss
 from blingfire import text_to_sentences
 from sentence_transformers import SentenceTransformer
 from dataclasses import dataclass
-from typing import Optional
 
 from utils import dumpj, loadj, dumpp, loadp
 import warnings
@@ -17,9 +16,11 @@ import warnings
 @dataclass
 class ChunkInfo:
     text: str
-    user_id: Optional[str]
-    business_id: Optional[str]
-    review_id: Optional[str]
+class ChunkInfo:
+    text: str
+    user_id: str = None
+    business_id: str = None
+    review_id: str = None
 
 class Yelp_Embedder:
     def __init__(self, args, reviews):

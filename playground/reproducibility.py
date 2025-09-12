@@ -42,7 +42,8 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
         item_name = info_by_id.get(biz_id, {}).get("name") if biz_id else None
 
         D, I = index.search(target_vec.astype(np.float32), cfg.top_k + 1)
-        neighbors = [flat[j] for j in I[0][1:]]
+        neighbor_infos = [chunk_infos[j] for j in I[0][1:]]
+        neighbors = [ni.text for ni in neighbor_infos]
 
 
         print("=== Sample ===")
@@ -54,4 +55,16 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
             else:
                 print(f"Business ID: {biz_id}")
         print(f"Target: {target_text}")
-        print(f"neighbors: {neighbors}")
+        print("Neighbors:")
+        for ni in neighbor_infos:
+            n_user = ni.user_id
+            n_biz = ni.business_id
+            n_name = info_by_id.get(n_biz, {}).get("name") if n_biz else None
+            line = f"- {ni.text}"
+            if n_user:
+                line += f" | User ID: {n_user}"
+            if n_biz:
+                line += f" | Business ID: {n_biz}"
+                if n_name:
+                    line += f" ({n_name})"
+            print(line)
