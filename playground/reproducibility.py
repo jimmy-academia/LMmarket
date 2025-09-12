@@ -17,8 +17,13 @@ class Config:
 
 # -------------- Experiment --------------
 
-def run_reproducibility_experiment(embedder, cfg: Config = Config()):
-    vecs, index, chunks = embedder.vecs, embedder.index, embedder.chunks
+def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config()):
+    vecs, index, chunks, offsets = (
+        embedder.vecs,
+        embedder.index,
+        embedder.chunks,
+        embedder.offsets,
+    )
     """
 
     Given a set of reviews, embeddings, and a FAISS index, randomly sample
@@ -33,6 +38,12 @@ def run_reproducibility_experiment(embedder, cfg: Config = Config()):
         idx = int(rs.choice(len(vecs)))
         target_vec = vecs[idx][None, :]
         target_text = flat[idx]
+        r_idx = np.searchsorted(offsets, idx, side="right") - 1
+        user_ids = getattr(embedder, "user_ids", None)
+        biz_ids = getattr(embedder, "business_ids", None)
+        user_id = user_ids[r_idx] if user_ids else None
+        biz_id = biz_ids[r_idx] if biz_ids else None
+        item_name = info_by_id.get(biz_id, {}).get("name") if biz_id else None
 
         D, I = index.search(target_vec.astype(np.float32), cfg.top_k + 1)
         neighbors = [flat[j] for j in I[0][1:]]
@@ -45,6 +56,13 @@ def run_reproducibility_experiment(embedder, cfg: Config = Config()):
         sim = float(np.dot(guess_vec, vecs[idx]))
 
         print("=== Sample ===")
+        if user_id:
+            print(f"User ID: {user_id}")
+        if biz_id:
+            if item_name:
+                print(f"Business ID: {biz_id} ({item_name})")
+            else:
+                print(f"Business ID: {biz_id}")
         print(f"Target: {target_text}")
         print(f"neighbors: {neighbors}")
         print(f"Guess: {guess}")

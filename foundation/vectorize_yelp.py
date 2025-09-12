@@ -41,9 +41,12 @@ class Yelp_Embedder:
 
 
     def build_embeddings(self, reviews):
+        self.review_texts = [r['text'] for r in reviews]
+        self.user_ids = [r['user_id'] for r in reviews]
+        self.business_ids = [r['business_id'] for r in reviews]
+        self.review_ids = [r.get('review_id') for r in reviews]
 
-        reviews = [r['text'] for r in reviews]
-        self.chunks = [split_to_spans(rtext, self.max_chars, self.min_merge) for rtext in reviews]
+        self.chunks = [split_to_spans(rtext, self.max_chars, self.min_merge) for rtext in self.review_texts]
         flat, self.offsets = flatten_with_offsets(self.chunks)
         self.vecs = embed_texts(flat, self.model_name, self.batch_size, self.normalize)
         self.index = build_index(self.vecs)
@@ -59,23 +62,64 @@ class Yelp_Embedder:
         dumpj(self.meta_path, self.meta)
         faiss.write_index(self.index, str(self.index_path))
         np.save(self.vec_path, self.vecs)
-        dumpp(self.offset_chunks_path, (self.offsets, self.chunks))
-        ## save the files
+        dumpp(
+            self.offset_chunks_path,
+            (self.offsets, self.chunks, self.user_ids, self.business_ids, self.review_ids),
+        )        ## save the files
 
     def load(self):
         ## load the files to self.variables
         self.meta = loadj(self.meta_path)
         self.index = faiss.read_index(str(self.index_path))
         self.vecs = np.load(self.vec_path)
-        self.offsets, self.chunks = loadp(self.offset_chunks_path)
+        self.offsets, self.chunks
+        (
+            self.offsets,
+            self.chunks,
+            self.user_ids,
+            self.business_ids,
+            self.review_ids,
+        ) = loadp(self.offset_chunks_path)
 
 
-# -------------- Quick search --------------
+# -------------- FAISS index --------------
+def build_index(vecs, index_type = 'flatip'):
+    clf = {
+        # HNSW params
+        "hnsw_M": 32,                 # number of neighbors in graph (16–48 typical)
+        "hnsw_efConstruction": 80,    # construction search depth (80–200)
+        "hnsw_efSearch": 64,          # search depth (32–128)
 
-def load_index_and_search(bundle, queries, top_k=10):
-    index = faiss.read_index(bundle["paths"]["index"])
-    D, I = index.search(queries.astype(np.float32), top_k)
-    return I, D
+        # IVF-PQ params
+        "ivf_nlist": 8192,            # number of coarse clusters (≈√N is a rule of thumb)
+        "ivf_nprobe": 32,             # clusters to probe at search time (8–64 typical)
+        "pq_m": 16,                   # number of subquantizers (must divide dim)
+        "pq_nbits": 8,                # bits per subquantizer (8 is standard)
+        "train_sample": 200_000,      # number of vectors used to train PQ
+    }
+
+    d = vecs.shape[1]
+    if cfg.index_type.upper() == "HNSW":
+        index = faiss.IndexHNSWFlat(d, cfg["hnsw_M"], faiss.METRIC_INNER_PRODUCT)
+        index.hnsw.efConstruction = cfg["hnsw_efConstruction"]
+        index.add(vecs)
+        return index
+    if cfg.index_type.upper() == "IVF-PQ":
+        quant = faiss.IndexHNSWFlat(d, 32, faiss.METRIC_INNER_PRODUCT)
+        index = faiss.IndexIVFPQ(quant, d, cfg["ivf_nlist"], cfg["pq_m"], 8, faiss.METRIC_INNER_PRODUCT)
+        n = vecs.shape[0]
+        if n <= cfg["train_sample"]:
+            train_x = vecs
+        else:
+            rs = np.random.RandomState(123)
+            train_x = vecs[rs.choice(n, size=cfg["train_sample"], replace=False)]
+        index.train(train_x)
+        index.add(vecs)
+        return index
+    else:
+        index = faiss.IndexFlatIP(d)
+        index.add(vecs)
+    return index
 
 # -------------- Modules --------------
 
@@ -189,20 +233,4 @@ def embed_texts(texts, model_name, batch_size, normalize=True):
             normalize_embeddings=normalize,
         )
     return embs.cpu().numpy().astype("float32")
-
-# -------------- FAISS index --------------
-def build_index(vecs):
-    d = vecs.shape[1]
-
-    if torch.cuda.is_available():
-        try:
-            res = faiss.StandardGpuResources()
-            index = faiss.GpuIndexFlatIP(res, d)  # inner product
-            index.add(vecs)
-            return faiss.index_gpu_to_cpu(index)
-        except RuntimeError as e:
-            warnings.warn(f"GPU index construction failed ({e}); falling back to CPU.", RuntimeWarning)
-    index = faiss.IndexFlatIP(d)
-    index.add(vecs)
-    return index
 
