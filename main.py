@@ -25,7 +25,6 @@ def main():
     parser.add_argument('--dset', type=str, default='yelp')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
-    parser.add_argument('--repro', action='store_true', help='run reproducibility experiment')
     args = parser.parse_args()
 
     args.cache_dir = Path(args.cache_dir)
@@ -62,10 +61,9 @@ def main():
     load_fns = [loadj, faiss.read_index, np.load, np.load]
     load_or_build(paths, cache_fns, load_fns, vectorize_embedding, args, DATA['REVIEWS'][city])
 
-    if args.repro:
-        index = faiss.read_index(str(args.index_path))
-        vecs = np.load(args.vec_path)
-        run_reproducibility_experiment(DATA['REVIEWS'][city], vecs, index)
+    index = faiss.read_index(str(args.index_path))
+    vecs = np.load(args.vec_path)
+    run_reproducibility_experiment(DATA['REVIEWS'][city], vecs, index)
 
 
 
