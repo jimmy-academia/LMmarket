@@ -7,11 +7,19 @@ import faiss
 from blingfire import text_to_sentences
 from sentence_transformers import SentenceTransformer
 from dataclasses import dataclass
+from typing import Optional
 
 from utils import dumpj, loadj, dumpp, loadp
 import warnings
-# ---------------- Config ----------------
 
+# ---------------- Class ----------------
+
+@dataclass
+class ChunkInfo:
+    text: str
+    user_id: Optional[str]
+    business_id: Optional[str]
+    review_id: Optional[str]
 
 class Yelp_Embedder:
     def __init__(self, args, reviews):
@@ -26,7 +34,7 @@ class Yelp_Embedder:
         self.meta_path = args.cache_dir/f"meta_{args.div_name}.json"
         self.index_path = args.cache_dir/f"index_{args.div_name}.index"
         self.vec_path = args.cache_dir/f"vec_{args.div_name}.npy"
-        self.offset_chunks_path = args.cache_dir/f"offset_chunks_{args.div_name}.pkl"
+        self.chunk_info_path = args.cache_dir/f"chunk_info_{args.div_name}.pkl"
 
         if not self.meta_path.exists():
             print("[Yelp_Embedder] >>> meta does not exist. building...")
@@ -41,20 +49,27 @@ class Yelp_Embedder:
 
 
     def build_embeddings(self, reviews):
-        self.review_texts = [r['text'] for r in reviews]
-        self.user_ids = [r['user_id'] for r in reviews]
-        self.business_ids = [r['business_id'] for r in reviews]
-        self.review_ids = [r.get('review_id') for r in reviews]
+        self.chunk_infos = []
+        for r in reviews:
+            spans = split_to_spans(r["text"], self.max_chars, self.min_merge)
+            for span in spans:
+                self.chunk_infos.append(
+                    ChunkInfo(
+                        text=span,
+                        user_id=r.get("user_id"),
+                        business_id=r.get("business_id"),
+                        review_id=r.get("review_id"),
+                    )
+                )
 
-        self.chunks = [split_to_spans(rtext, self.max_chars, self.min_merge) for rtext in self.review_texts]
-        flat, self.offsets = flatten_with_offsets(self.chunks)
+        flat = [ci.text for ci in self.chunk_infos]
         self.vecs = embed_texts(flat, self.model_name, self.batch_size, self.normalize)
         self.index = build_index(self.vecs)
         self.meta = {
             "model_name": self.model_name,
             "dim": int(self.vecs.shape[1]),
             "n_vectors": int(self.vecs.shape[0]),
-            "n_reviews": len(self.chunks),
+            "n_reviews": len(reviews),
             "normalize": bool(self.normalize),
         }
 
@@ -62,10 +77,8 @@ class Yelp_Embedder:
         dumpj(self.meta_path, self.meta)
         faiss.write_index(self.index, str(self.index_path))
         np.save(self.vec_path, self.vecs)
-        dumpp(
-            self.offset_chunks_path,
-            (self.offsets, self.chunks, self.user_ids, self.business_ids, self.review_ids),
-        )        ## save the files
+        dumpp(self.chunk_info_path, self.chunk_infos)
+        ## save the files
 
     def load(self):
         ## load the files to self.variables
@@ -73,13 +86,7 @@ class Yelp_Embedder:
         self.index = faiss.read_index(str(self.index_path))
         self.vecs = np.load(self.vec_path)
         self.offsets, self.chunks
-        (
-            self.offsets,
-            self.chunks,
-            self.user_ids,
-            self.business_ids,
-            self.review_ids,
-        ) = loadp(self.offset_chunks_path)
+        self.chunk_infos = loadp(self.chunk_info_path)
 
 
 # -------------- FAISS index --------------
@@ -99,12 +106,12 @@ def build_index(vecs, index_type = 'flatip'):
     }
 
     d = vecs.shape[1]
-    if cfg.index_type.upper() == "HNSW":
+    if index_type.upper() == "HNSW":
         index = faiss.IndexHNSWFlat(d, cfg["hnsw_M"], faiss.METRIC_INNER_PRODUCT)
         index.hnsw.efConstruction = cfg["hnsw_efConstruction"]
         index.add(vecs)
         return index
-    if cfg.index_type.upper() == "IVF-PQ":
+    if index_type.upper() == "IVF-PQ":
         quant = faiss.IndexHNSWFlat(d, 32, faiss.METRIC_INNER_PRODUCT)
         index = faiss.IndexIVFPQ(quant, d, cfg["ivf_nlist"], cfg["pq_m"], 8, faiss.METRIC_INNER_PRODUCT)
         n = vecs.shape[0]
@@ -207,14 +214,6 @@ def split_to_spans(text, max_chars=100, min_merge=40):
             out.append(spans[i])
             i += 1
     return out
-
-
-def flatten_with_offsets(chunks):
-    """Flatten list-of-lists and record start/end offsets for each group."""
-    flat = [s for review in chunks for s in review]
-    lengths = [len(review) for review in chunks]
-    offsets = np.cumsum([0] + lengths)  # shape (n_reviews+1,)
-    return flat, offsets
 
 def embed_texts(texts, model_name, batch_size, normalize=True):
     device = "cuda" if torch.cuda.is_available() else "cpu"

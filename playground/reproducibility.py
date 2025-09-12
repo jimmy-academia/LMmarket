@@ -4,8 +4,7 @@ from dataclasses import dataclass
 
 import faiss
 
-from foundation.vectorize_yelp import split_to_spans, flatten_with_offsets, embed_texts
-from llm import query_llm
+from foundation.vectorize_yelp import embed_texts
 
 # ---------------- Config ----------------
 
@@ -18,11 +17,10 @@ class Config:
 # -------------- Experiment --------------
 
 def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config()):
-    vecs, index, chunks, offsets = (
+    vecs, index, chunk_infos = (
         embedder.vecs,
         embedder.index,
-        embedder.chunks,
-        embedder.offsets,
+        embedder.chunk_infos,
     )
     """
 
@@ -31,29 +29,21 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
     embeddings.
     """
     # Reconstruct flattened spans to map embeddings back to text
-    flat, _ = flatten_with_offsets(chunks)
+    flat = [ci.text for ci in chunk_infos]
 
     rs = np.random.RandomState(0)
     for _ in range(cfg.n_samples):
         idx = int(rs.choice(len(vecs)))
         target_vec = vecs[idx][None, :]
-        target_text = flat[idx]
-        r_idx = np.searchsorted(offsets, idx, side="right") - 1
-        user_ids = getattr(embedder, "user_ids", None)
-        biz_ids = getattr(embedder, "business_ids", None)
-        user_id = user_ids[r_idx] if user_ids else None
-        biz_id = biz_ids[r_idx] if biz_ids else None
+        target_info = chunk_infos[idx]
+        target_text = target_info.text
+        user_id = target_info.user_id
+        biz_id = target_info.business_id
         item_name = info_by_id.get(biz_id, {}).get("name") if biz_id else None
 
         D, I = index.search(target_vec.astype(np.float32), cfg.top_k + 1)
         neighbors = [flat[j] for j in I[0][1:]]
 
-        prompt = "Nearby texts:\n" + "\n".join(f"- {t}" for t in neighbors)
-        prompt += "\n\nGuess the hidden text in one sentence."
-
-        guess = query_llm(prompt).strip()
-        guess_vec = embed_texts([guess], embedder.model_name, embedder.batch_size, embedder.normalize)[0]
-        sim = float(np.dot(guess_vec, vecs[idx]))
 
         print("=== Sample ===")
         if user_id:
@@ -65,5 +55,3 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
                 print(f"Business ID: {biz_id}")
         print(f"Target: {target_text}")
         print(f"neighbors: {neighbors}")
-        print(f"Guess: {guess}")
-        print(f"Similarity: {sim:.4f}\n")
