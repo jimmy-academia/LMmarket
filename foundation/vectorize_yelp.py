@@ -46,8 +46,7 @@ class Yelp_Embedder:
         self.chunks = [split_to_spans(rtext, self.max_chars, self.min_merge) for rtext in reviews]
         flat, self.offsets = flatten_with_offsets(self.chunks)
         self.vecs = embed_texts(flat, self.model_name, self.batch_size, self.normalize)
-        index = build_index(self.vecs)
-        self.index = faiss.index_gpu_to_cpu(index)
+        self.index = build_index(self.vecs)
         self.meta = {
             "model_name": self.model_name,
             "dim": int(self.vecs.shape[1]),
@@ -194,8 +193,16 @@ def embed_texts(texts, model_name, batch_size, normalize=True):
 # -------------- FAISS index --------------
 def build_index(vecs):
     d = vecs.shape[1]
-    res = faiss.StandardGpuResources()
-    index = faiss.GpuIndexFlatIP(res, d)  # inner product (use L2-normalized vecs for cosine)
+
+    if torch.cuda.is_available():
+        try:
+            res = faiss.StandardGpuResources()
+            index = faiss.GpuIndexFlatIP(res, d)  # inner product
+            index.add(vecs)
+            return faiss.index_gpu_to_cpu(index)
+        except RuntimeError as e:
+            warnings.warn(f"GPU index construction failed ({e}); falling back to CPU.", RuntimeWarning)
+    index = faiss.IndexFlatIP(d)
     index.add(vecs)
     return index
 
