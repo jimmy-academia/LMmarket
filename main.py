@@ -56,7 +56,8 @@ def main():
     args.index_path = args.cache_dir/f"index_{div_name}.index"
     args.vec_path = args.cache_dir/f"vec_{div_name}.npy"
     args.offset_path = args.cache_dir/f"offset_{div_name}.npy"
-    paths = [args.meta_path, args.index_path, args.vec_path, args.offset_path]
+    args.chuncks_path = args.cache_dir/f"chuncks_{div_name}.npy"
+    paths = [args.meta_path, args.index_path, args.vec_path, args.offset_path, args.chuncks_path]
     cache_fns = [dumpj, faiss.write_index, np.save, np.save]
     load_fns = [loadj, faiss.read_index, np.load, np.load]
     load_or_build(paths, cache_fns, load_fns, vectorize_embedding, args, DATA['REVIEWS'][city])

@@ -43,17 +43,17 @@ def vectorize_yelp_embedding(reviews):
         "n_reviews": len(chunks),
         "normalize": bool(cfg.normalize),
         "paths": {
-            "embeddings": str("embeddings.npy"),
-            "index": str("faiss.index"),
+            "embeddings": "embeddings.npy",
+            "index": "faiss.index",
         },
     }
-    return meta, index, vecs, offsets
+    return meta, index, vecs, offsets, chunks
 
 
 # -------------- Quick search --------------
 
 def load_index_and_search(bundle, queries, top_k=10):
-    index = faiss.read_index(bundle["paths"]["faiss_index"])
+    index = faiss.read_index(bundle["paths"]["index"])
     D, I = index.search(queries.astype(np.float32), top_k)
     return I, D
 

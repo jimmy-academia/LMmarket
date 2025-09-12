@@ -18,7 +18,7 @@ class Config:
     normalize: bool = VecConfig.normalize
     top_k: int = 5
     n_samples: int = 3
-    llm_model: str = "gpt-4.1-mini"
+    llm_model: str = "gpt-5-mini"
 
 # -------------- Experiment --------------
 
