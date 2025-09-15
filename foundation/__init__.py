@@ -1,5 +1,6 @@
 from .process_yelp import process_yelp_data
 from .vectorize_yelp import Yelp_Embedder
+from .embedding_sea import Yelp_Embedder_SEA
 
 def process_data(args):
     if args.dset == 'yelp':
@@ -9,7 +10,7 @@ def process_data(args):
 
 def fetch_embedder(args, reviews):
     if args.dset == 'yelp':
-        return Yelp_Embedder(args, reviews)
+        return Yelp_Embedder_SEA(args, reviews)
     else:
         print(f'[foundation/__init__.py] WARNING, vectorize_{args.dset}_embedding function not implemented.')
 

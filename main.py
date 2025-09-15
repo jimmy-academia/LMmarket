@@ -50,7 +50,8 @@ def main():
     '''
     
     city = 'saint louis'
-    args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
+    # args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
+    args.div_name = f"{args.dset}_{city.replace(' ', '_')}_sea"
 
     embedder = fetch_embedder(args, DATA['REVIEWS'][city])
     run_reproducibility_experiment(embedder, DATA['INFO'][city])
