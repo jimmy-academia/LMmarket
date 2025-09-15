@@ -11,7 +11,7 @@ from foundation.vectorize_yelp import embed_texts
 @dataclass
 class Config:
     top_k: int = 5
-    n_samples: int = 3
+    n_samples: int = 10
     # llm_model: str = "gpt-5-mini"
 
 # -------------- Experiment --------------
@@ -33,6 +33,7 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
 
     rs = np.random.RandomState(0)
     for _ in range(cfg.n_samples):
+
         idx = int(rs.choice(len(vecs)))
         target_vec = vecs[idx][None, :]
         target_info = chunk_infos[idx]
@@ -45,8 +46,8 @@ def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config())
         neighbor_infos = [chunk_infos[j] for j in I[0][1:]]
         neighbors = [ni.text for ni in neighbor_infos]
 
-
-        print("=== Sample ===")
+        print("\n\n")
+        print("=== Sample ===", idx)
         if user_id:
             print(f"User ID: {user_id}")
         if biz_id:

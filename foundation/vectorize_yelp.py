@@ -16,8 +16,6 @@ import warnings
 @dataclass
 class ChunkInfo:
     text: str
-class ChunkInfo:
-    text: str
     user_id: str = None
     business_id: str = None
     review_id: str = None
@@ -27,7 +25,7 @@ class Yelp_Embedder:
 
         self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
         self.batch_size = 256
-        self.max_chars = 100
+        self.max_chars = 50
         self.min_merge = 20
         self.normalize = True
 
@@ -86,7 +84,6 @@ class Yelp_Embedder:
         self.meta = loadj(self.meta_path)
         self.index = faiss.read_index(str(self.index_path))
         self.vecs = np.load(self.vec_path)
-        self.offsets, self.chunks
         self.chunk_infos = loadp(self.chunk_info_path)
 
 
