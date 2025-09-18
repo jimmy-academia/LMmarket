@@ -124,33 +124,46 @@ def run_llm_batch(prompts, model="gpt-4.1-mini", temperature=0.1, num_workers=8,
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
 
-        async def one(p, with_usage: bool):
+        async def one(idx, p, with_usage):
             try:
-                return await query_llm_async(
-                    p, model=model, temperature=temperature, sem=sem,
-                    verbose=False, return_usage=with_usage
+                result = await query_llm_async(
+                    p,
+                    model=model,
+                    temperature=temperature,
+                    sem=sem,
+                    verbose=False,
+                    return_usage=with_usage,
                 )
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")
-                return ("{}", 0, 0) if with_usage else "{}"
+                result = ("{}", 0, 0) if with_usage else "{}"
+
+            if with_usage:
+                content, pt, ct = result
+                return idx, content, pt, ct
+            return idx, result
 
         if verbose:
-            # progress + true totals
-            tasks = [one(p, True) for p in prompts]
-            outs, total_pt, total_ct = [], 0, 0
-            # Use tqdm_asyncio.as_completed to tick as each finishes
+            tasks = [one(i, p, True) for i, p in enumerate(prompts)]
+            outs = [None] * len(prompts)
+            total_pt = 0
+            total_ct = 0
             for fut in tqdm_asyncio.as_completed(tasks, total=len(prompts), desc="LLM batch", ncols=88):
-                content, pt, ct = await fut
-                outs.append(content)
-                total_pt += pt; total_ct += ct
+                idx, content, pt, ct = await fut
+                outs[idx] = content
+                total_pt += pt
+                total_ct += ct
             total_cost = _estimate_cost_usd(model, total_pt, total_ct)
-            print(f"[LLM] batch complete. prompt_tokens={total_pt} "
-                  f"completion_tokens={total_ct} est_cost=${total_cost:.6f}")
+            print(
+                f"[LLM] batch complete. prompt_tokens={total_pt} "
+                f"completion_tokens={total_ct} est_cost=${total_cost:.6f}"
+            )
             return outs
-        else:
-            # simple gather, no totals
-            tasks = [one(p, False) for p in prompts]
-            return await asyncio.gather(*tasks)
+        
+        tasks = [one(i, p, False) for i, p in enumerate(prompts)]
+        results = await asyncio.gather(*tasks)
+        results.sort(key=lambda item: item[0])
+        return [content for _, content in results]
 
     return asyncio.run(_runner())
 

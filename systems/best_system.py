@@ -11,7 +11,6 @@ class BestSystem(BaseSystem):
 
 class SATBaseline(BaseSystem):
     def __init__(self, args, DATA, city):
-        print('operating segment any text baseline segmentation')
         super().__init__(args, DATA, city)
         self.onnx = True
 
@@ -28,7 +27,7 @@ class SATBaseline(BaseSystem):
     def segmentation(self):
         review_texts = [r['text'] for r in self.reviews]
         # sat.split accepts a list and yields per-text segments (iterator)
-        segmented_iter = self.sat.split(review_texts[:100])
+        segmented_iter = self.sat.split(review_texts[:50])
         segmented_reviews = list(segmented_iter)
         # (optional) attach back to reviews
         # for r, segs in zip(self.reviews, segmented_reviews):
@@ -49,12 +48,11 @@ class OUBaseline(BaseSystem):
     - Includes create_query_string for building strings to embed.
     """
     def __init__(self, args, DATA, city):
-        print('operating opinion unit baseline segmentation')
         super().__init__(args, DATA, city)
         self.ou_model = "gpt-5-nano"
         self.ou_temperature = 0
-        self.num_workers = 8
-        self.max_review_num = 100
+        self.num_workers = 128
+        self.max_review_num = 50
         self.segmentation()
 
     # ---- inline prompt (faithful to Figure 4) ----
