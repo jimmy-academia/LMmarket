@@ -16,13 +16,15 @@ from pathlib import Path
 import argparse
 
 from debug import check
-from foundation import process_data, fetch_embedder
+from data_foundation import process_data
+from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj
-from playground.reproducibility import run_reproducibility_experiment
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
+    parser.add_argument('--system', type=str, default='ou') 
+    # best, sat, ou
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
     args = parser.parse_args()
@@ -50,11 +52,30 @@ def main():
     '''
     
     city = 'saint louis'
-    # args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
-    args.div_name = f"{args.dset}_{city.replace(' ', '_')}_sea"
+    args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
 
-    embedder = fetch_embedder(args, DATA['REVIEWS'][city])
-    run_reproducibility_experiment(embedder, DATA['INFO'][city])
+    todos = """
+    Now we are at square 1, but we know where we want to go.
+    1. Design method. Train model to disect evident unit
+        We are now going into the details
+            - Found model: TARGER or AMTM
+            - LLM label
+            - train
+            (LLM in the loop guidance)
+            1- validate, observe error
+            2- random sample confidence score, LLM feedback
+            3-> use LLM to create rule or device to retrieve more of a type of error??
+            https://chatgpt.com/c/68cb3dbb-1c48-832f-8612-feb69e72e99b
+    2. Baseline method.   
+
+    Pipeline approach (proposed and baseline):
+        -> review to exerpts segment
+        -> cluster and retrieval model
+        -> utility model
+    End-to-end approach (baseline): eg sparse, dense, 
+    """
+    print(todos)
+    System = build_system(args, DATA, city)
 
 
 

@@ -6,6 +6,7 @@ import asyncio
 import openai
 from openai import AsyncOpenAI
 from utils import readf
+from tqdm.asyncio import tqdm as tqdm_asyncio
 
 # ---- clients ----
 openai_client = None
@@ -66,8 +67,7 @@ def _extract_usage(resp):
     ct = getattr(u, "completion_tokens", None) or (u.get("completion_tokens") if isinstance(u, dict) else 0) or 0
     return int(pt), int(ct)
 
-# ---- query ----
-
+# ---- query (sync) ----
 def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -87,10 +87,17 @@ def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False):
 
     return content
 
-
-async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False):
+# ---- query (async) ----
+async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False):
+    """
+    If return_usage=True, returns (content, pt, ct); else returns content.
+    """
     client = get_async_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # allow None semaphore
+    if sem is None:
+        sem = asyncio.Semaphore(999999)
 
     async with sem:
         messages = [{"role": "user", "content": prompt}]
@@ -101,39 +108,53 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         resp = await client.chat.completions.create(**kwargs)
         content = resp.choices[0].message.content
 
+        pt, ct = _extract_usage(resp)
         if verbose:
-            pt, ct = _extract_usage(resp)
             cost = _estimate_cost_usd(model, pt, ct)
             print(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${cost:.6f}")
 
-        return content
+        return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
 def run_llm_batch(prompts, model="gpt-4.1-mini", temperature=0.1, num_workers=8, verbose=False):
+    """
+    - When verbose=False: fast path, returns list[str] contents.
+    - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
+    """
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
-        totals = {"pt": 0, "ct": 0, "cost": 0.0}
-        tasks = [query_llm_async(p, model=model, temperature=temperature, sem=sem, verbose=verbose) for p in prompts]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        outs = []
-        for r in results:
-            if isinstance(r, Exception):
-                logging.error(f"LLM query failed: {r}")
-                outs.append("{}")
-            else:
-                outs.append(r)
-        # re-query usage for totals (only if verbose and model supports usage in responses)
-        if verbose and outs:
-            # lightweight second pass: run a tiny accumulator by re-calling _estimate on each task’s usage
-            # Note: we already printed per-call; to avoid extra API calls, just inform totals unavailable unless tracked inline.
-            print("[LLM] batch complete (totals shown above per-call).")
-        return outs
+        async def one(p, with_usage: bool):
+            try:
+                return await query_llm_async(
+                    p, model=model, temperature=temperature, sem=sem,
+                    verbose=False, return_usage=with_usage
+                )
+            except Exception as e:
+                logging.error(f"LLM query failed: {e}")
+                return ("{}", 0, 0) if with_usage else "{}"
+
+        if verbose:
+            # progress + true totals
+            tasks = [one(p, True) for p in prompts]
+            outs, total_pt, total_ct = [], 0, 0
+            # Use tqdm_asyncio.as_completed to tick as each finishes
+            for fut in tqdm_asyncio.as_completed(tasks, total=len(prompts), desc="LLM batch", ncols=88):
+                content, pt, ct = await fut
+                outs.append(content)
+                total_pt += pt; total_ct += ct
+            total_cost = _estimate_cost_usd(model, total_pt, total_ct)
+            print(f"[LLM] batch complete. prompt_tokens={total_pt} "
+                  f"completion_tokens={total_ct} est_cost=${total_cost:.6f}")
+            return outs
+        else:
+            # simple gather, no totals
+            tasks = [one(p, False) for p in prompts]
+            return await asyncio.gather(*tasks)
 
     return asyncio.run(_runner())
 
-
-
+# ---- utils ----
 def safe_json_parse(output_str):
     """
     Parse LLM output into a Python object.
@@ -145,7 +166,6 @@ def safe_json_parse(output_str):
         return {}
 
     s = output_str.strip()
-
     # remove code fences if present
     s = re.sub(r"^```(?:json)?", "", s)
     s = re.sub(r"```$", "", s).strip()
@@ -160,4 +180,3 @@ def safe_json_parse(output_str):
     if isinstance(data, (dict, list)):
         return data
     return {}
-
