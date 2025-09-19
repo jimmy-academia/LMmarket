@@ -58,6 +58,7 @@ def main():
 
     reviews = DATA['REVIEWS'][city]
     tests = load_or_build(args.testdata_path, dumpj, loadj, construct_benchmark, reviews, args.num_test)
+    
     todos = """
     Now we are at square 1, but we know where we want to go.
     1. Design method. Train model to disect evident unit

@@ -14,7 +14,6 @@ class OUBaseline(BaseSystem):
         self.ou_model = "gpt-5-nano"
         self.ou_temperature = 0
         self.num_workers = 128
-        self.reviews = reviews
 
     # ---- inline prompt (faithful to Figure 4) ----
     PROMPT_TEMPLATE = """Perform aspect-based sentiment analysis (ABSA) for the restaurant review provided as input.
@@ -53,8 +52,8 @@ Input (review text):
         excerpt = (u.get("excerpt") or "").strip()
         return {"aspect": aspect, "sentiment": sentiment, "excerpt": excerpt}
 
-    def segmentation(self):
-        review_texts = [r["text"] for r in self.reviews]
+    def segmentation(self, reviews):
+        review_texts = [r["text"] for r in reviews]
         prompts = [self._make_prompt(t) for t in review_texts]
 
         raw_outputs = run_llm_batch(
@@ -66,7 +65,7 @@ Input (review text):
         )
 
         all_units = []
-        for r, out_str in zip(self.reviews, raw_outputs):
+        for r, out_str in zip(reviews, raw_outputs):
             data = safe_json_parse(out_str)  # expects a JSON list; tolerant to dicts
             units_raw = data if isinstance(data, list) else (data.get("units", []) if isinstance(data, dict) else [])
             units = [self._normalize_unit(u) for u in units_raw if isinstance(u, dict)]
@@ -94,6 +93,8 @@ Input (review text):
         s = u.get("sentiment", "").strip()
         e = u.get("excerpt", "").strip()
         return f"aspect: {a} | sentiment: {s} | {e}"
+
+    def predict_given_aspects(self, aspects, )
 
 
 # https://github.com/emilhagl/Opinion-Units
