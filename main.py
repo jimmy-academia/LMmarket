@@ -15,7 +15,6 @@ from pathlib import Path
 
 import argparse
 
-from debug import check
 from data_foundation import process_data
 from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj
@@ -27,6 +26,8 @@ def main():
     # best, sat, ou
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
+    # benchmark
+    parser.add_argument('--num_test', type=int, default=100)
     args = parser.parse_args()
 
     args.cache_dir = Path(args.cache_dir)
@@ -54,6 +55,8 @@ def main():
     city = 'saint louis'
     args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
 
+    full_reviews = DATA['REVIEWS'][city]
+    reviews, test_instances = build_benchmark(reviews, args.num_test)
     todos = """
     Now we are at square 1, but we know where we want to go.
     1. Design method. Train model to disect evident unit
@@ -75,8 +78,8 @@ def main():
     End-to-end approach (baseline): eg sparse, dense, 
     """
     print(todos)
-    System = build_system(args, DATA, city)
-
+    System = build_system(args, reviews, test_instances)
+    System.
 
 
 if __name__ == '__main__':
