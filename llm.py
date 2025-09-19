@@ -1,12 +1,16 @@
 # llm.py
+import io
 import re
+import time
 import json
 import logging
 import asyncio
 import openai
 from openai import AsyncOpenAI
-from utils import readf
+from utils import readf, dumpj 
 from tqdm.asyncio import tqdm as tqdm_asyncio
+
+from pathlib import Path
 
 # ---- clients ----
 openai_client = None
@@ -193,3 +197,102 @@ def safe_json_parse(output_str):
     if isinstance(data, (dict, list)):
         return data
     return {}
+
+def run_llm_batch_api(prompts, model="gpt-4.1-mini", temperature=0.1, verbose=False, poll_interval=5):
+    """
+    OpenAI Batch API: memory-only (no temp files). Returns list[str] in input order.
+    Prints token totals and estimated cost when verbose=True.
+    """
+    client = get_openai_client()
+
+    # Build JSONL (in-memory)
+    lines = []
+    m_is_gpt5 = model.lower().startswith("gpt-5")
+    for i, p in enumerate(prompts):
+        body = {"model": model, "messages": [{"role": "user", "content": p}]}
+        if not m_is_gpt5:
+            body["temperature"] = temperature
+        lines.append(json.dumps({
+            "custom_id": f"prompt-{i}",
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": body,
+        }, ensure_ascii=False))
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
+
+    # Upload input JSONL from memory
+    buf = io.BytesIO(payload)
+    buf.name = "batch.jsonl"  # some SDKs use this for filename
+    uploaded = client.files.create(file=buf, purpose="batch")
+
+    # Create batch
+    batch = client.batches.create(
+        input_file_id=uploaded.id,
+        endpoint="/v1/chat/completions",
+        completion_window="24h",
+    )
+    if verbose:
+        print(f"[LLM batch] id={batch.id} status={getattr(batch,'status',None)}")
+
+    # Poll
+    status = getattr(batch, "status", None)
+    while status in {"validating", "queued", "in_progress", "finalizing"}:
+        time.sleep(max(1, poll_interval))
+        batch = client.batches.retrieve(batch.id)
+        status = getattr(batch, "status", None)
+        if verbose:
+            print(f"[LLM batch] status={status}")
+
+    if status != "completed":
+        logging.error(f"[LLM batch] ended with status={status}")
+        return ["{}" for _ in prompts]
+
+    # Fetch output (fall back to error file if present)
+    fid = getattr(batch, "output_file_id", None) or getattr(batch, "error_file_id", None)
+    if not fid:
+        logging.error("[LLM batch] no output_file_id/error_file_id")
+        return ["{}" for _ in prompts]
+
+    content = client.files.content(fid)
+    if hasattr(content, "text") and isinstance(content.text, str):
+        raw = content.text
+    elif hasattr(content, "read"):
+        data = content.read()
+        raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else str(data)
+    elif isinstance(content, (bytes, bytearray)):
+        raw = content.decode("utf-8")
+    else:
+        raw = str(content)
+
+    # Parse responses
+    outputs, total_pt, total_ct = {}, 0, 0
+    for line in raw.splitlines():
+        if not line.strip(): 
+            continue
+        try:
+            entry = json.loads(line)
+        except Exception as e:
+            logging.error(f"[LLM batch] parse error: {e}")
+            continue
+
+        cid = entry.get("custom_id")
+        resp = (entry.get("response") or {})
+        if resp.get("status_code") != 200:
+            logging.error(f"[LLM batch] item {cid} status={resp.get('status_code')}")
+            outputs[cid] = "{}"
+            continue
+
+        body = resp.get("body") or {}
+        ch = (body.get("choices") or [])
+        outputs[cid] = ch[0].get("message", {}).get("content", "") if ch else ""
+
+        usage = body.get("usage") or {}
+        total_pt += int(usage.get("prompt_tokens") or 0)
+        total_ct += int(usage.get("completion_tokens") or 0)
+
+    if verbose:
+        cost = _estimate_cost_usd(model, total_pt, total_ct)
+        print(f"[LLM batch] prompt_tokens={total_pt} completion_tokens={total_ct} est_cost=${cost:.6f}")
+
+    # Align to input order
+    return [outputs.get(f"prompt-{i}", "") for i in range(len(prompts))]
