@@ -60,7 +60,7 @@ Input (review text):
         if sentiment not in {"positive", "negative", "neutral"}:
             sentiment = "neutral"
         excerpt = (u.get("excerpt") or "").strip()
-        sentiment_score = float(u.get("sentiment_score"))
+        sentiment_score = float(u.get("sentiment_score") or 0)
         rules = {
             "neutral":  ((-0.33, 0.33), 0.0),
             "negative": ((-1.0, -0.33), -0.66),
@@ -82,7 +82,6 @@ Input (review text):
             num_workers=self.num_workers,
             verbose=True
         )
-
         all_units = []
         for r, out_str in zip(reviews, raw_outputs):
             data = safe_json_parse(out_str)  # expects a JSON list; tolerant to dicts
@@ -124,7 +123,10 @@ Input (review text):
         return embs.cpu().numpy().astype("float32")
 
     def predict_given_aspects(self, user_id, item_id, aspects):
-        item_reviews = [r for r in self.reviews if r.get("item_id") == item_id]
+        print('WARNING: align to item_id @ data_foundataion')
+        item_reviews = [r for r in self.reviews if r.get("business_id") == item_id]
+        item_reviews = item_reviews[:4]
+        print('WARNING: do persistent!!')
         if any("opinion_units" not in r for r in item_reviews):
             self.segmentation(item_reviews)
 
@@ -153,10 +155,12 @@ Input (review text):
         S = np.where(m, S, 0.0)
 
         ymap = {"positive": 1.0, "neutral": 0.0, "negative": -1.0}
-        y_vec = np.array([ymap.get((u.get("sentiment") or "neutral").lower(), 0.0) for u in units], dtype=np.float32)
+        y_vec = np.array([ymap.get((u.get("sentiment") or "neutral").lower(), 0.0) for u in pool], dtype=np.float32)
 
-        num = S_masked @ y_vec                 # [Q]
-        den = S_masked.sum(axis=1) + 1e-9      # [Q]
+        num = S @ y_vec                 # [Q]
+        den = S.sum(axis=1) + 1e-9      # [Q]
         scores = num / den                     # [Q], in [-1,1]
+
+        input('just do 1, fix the warnings!!')
 
         return scores.tolist()
