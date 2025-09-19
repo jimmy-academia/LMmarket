@@ -8,7 +8,7 @@ class BaseSystem:
 
         self.reviews = [r for r in reviews if r["review_id"] not in self.test_review_ids]
 
-        self.user_index = self._build_user_index(self.reviews)
+        self.user_index = self._build_user_index()
         self.test_data, self.ground_truth = self._prep_tests(self.tests)
 
     def _build_user_index(self):
@@ -22,12 +22,11 @@ class BaseSystem:
         prepared, ground_truth = [], []
         for t in tests:
             units   = t.get("opinion_units")
-            aspects = [u.get("aspect") for u in units]
-            scores  = [self._normalize_sentiment(u.get("sentiment")) for u in units]
+            aspects = [u[0] for u in units]
+            scores  = [u[2] for u in units]
             prepared.append({
                 "user_id":     t.get("user_id"),
                 "item_id":     t.get("item_id"),
-                "review_text": t.get("review_text"),
                 "aspects": aspects,
             })
             ground_truth.append(scores)
@@ -35,7 +34,7 @@ class BaseSystem:
 
     # ---------- make predictions ----------
 
-    def predict_with_aspect(self, user_id, item_id, aspects):
+    def predict_given_aspects(self, user_id, item_id, aspects):
         """Return list of floats (same length as aspects)"""
         raise NotImplementedError("predict_with_aspect must be implemented by subclass")
 
@@ -44,7 +43,7 @@ class BaseSystem:
         predictions = []
         for t in self.test_data:
             uid, iid, aspects = t["user_id"], t["item_id"], t["aspects"]
-            sent_score = self.predict_with_aspect(uid, iid, aspects)
+            sent_score = self.predict_given_aspects(uid, iid, aspects)
             predictions.append(sent_scores)
         return predictions
 

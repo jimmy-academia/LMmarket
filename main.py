@@ -17,7 +17,7 @@ import argparse
 
 from data_foundation import process_data, construct_benchmark
 from systems import build_system
-from utils import load_or_build, readf, dumpj, loadj
+from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 
 def main():
     parser = argparse.ArgumentParser()
@@ -81,7 +81,10 @@ def main():
     """
     print(todos)
     System = build_system(args, reviews, tests)
-
+    args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
+    predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)
+    result = System.evaluate()
+    print(result)
 
 if __name__ == '__main__':
     main()

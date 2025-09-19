@@ -15,7 +15,7 @@ def construct_benchmark(reviews, k=5, seed=0):
 
     test_reviews = [r for r in reviews if r["review_id"] in hold_ids]
     ou = OUBaseline(None, None, None)
-    __ = ou.segmentation(test_reviews) # annotates r["opinion_units"] in-place
+    __ = ou.segmentation(test_reviews, True) # annotates r["opinion_units"] in-place
 
     # 4) pack test samples
     tests = []
@@ -25,6 +25,6 @@ def construct_benchmark(reviews, k=5, seed=0):
             "user_id": r["user_id"],
             "item_id": r["business_id"],
             "review_text": r["text"],
-            "opinion_units": [(u["aspect"], u["excerpt"], u["sentiment"]) for u in r.get("opinion_units", [])],
+            "opinion_units": [(u["aspect"], u["excerpt"], u["sentiment_score"]) for u in r.get("opinion_units", [])],
         })
     return tests
