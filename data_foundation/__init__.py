@@ -1,4 +1,5 @@
 from .process_yelp import process_yelp_data
+from .benchmark_maker import construct_benchmark
 
 def process_data(args):
     if args.dset == 'yelp':

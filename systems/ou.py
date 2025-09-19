@@ -9,8 +9,8 @@ class OUBaseline(BaseSystem):
     - Attach to each review as r["opinion_units"].
     - Includes create_query_string for building strings to embed.
     """
-    def __init__(self, args, reviews):
-        super().__init__(args, reviews)
+    def __init__(self, args, reviews, tests):
+        super().__init__(args, reviews, tests)
         self.ou_model = "gpt-5-nano"
         self.ou_temperature = 0
         self.num_workers = 128
@@ -55,7 +55,6 @@ Input (review text):
 
     def segmentation(self):
         review_texts = [r["text"] for r in self.reviews]
-
         prompts = [self._make_prompt(t) for t in review_texts]
 
         raw_outputs = run_llm_batch(
@@ -67,7 +66,7 @@ Input (review text):
         )
 
         all_units = []
-        for r, out_str in zip(reviews, raw_outputs):
+        for r, out_str in zip(self.reviews, raw_outputs):
             data = safe_json_parse(out_str)  # expects a JSON list; tolerant to dicts
             units_raw = data if isinstance(data, list) else (data.get("units", []) if isinstance(data, dict) else [])
             units = [self._normalize_unit(u) for u in units_raw if isinstance(u, dict)]
