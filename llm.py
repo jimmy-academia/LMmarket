@@ -172,31 +172,84 @@ def run_llm_batch(prompts, model="gpt-4.1-mini", temperature=0.1, num_workers=8,
     return asyncio.run(_runner())
 
 # ---- utils ----
+# def safe_json_parse(output_str):
+#     """
+#     Parse LLM output into a Python object.
+#     - Strips code fences / stray text.
+#     - Returns {} on failure.
+#     - Does NOT enforce a fixed schema; keeps whatever keys are present.
+#     """
+#     if not output_str:
+#         return {}
+
+#     s = output_str.strip()
+#     # remove code fences if present
+#     s = re.sub(r"^```(?:json)?", "", s)
+#     s = re.sub(r"```$", "", s).strip()
+
+#     try:
+#         data = json.loads(s)
+#     except Exception as e:
+#         logging.warning(f"JSON parse failed: {e} | text={s}...")
+#         return {}
+
+#     # only accept dicts/lists; otherwise return {}
+#     if isinstance(data, (dict, list)):
+#         return data
+#     return {}
+
 def safe_json_parse(output_str):
     """
-    Parse LLM output into a Python object.
-    - Strips code fences / stray text.
-    - Returns {} on failure.
-    - Does NOT enforce a fixed schema; keeps whatever keys are present.
+    Parse LLM output into a Python object (dict or list).
+    - Strips code fences / stray whitespace
+    - Normalizes smart quotes
+    - Fixes common LLM JSON glitches:
+        * semicolons between objects -> commas
+        * missing comma between `}{` -> `},{`
+        * trailing commas before } or ]
+    - Truncates to the last closing } or ] (to ignore "..."/logs after JSON)
+    - Returns {} on failure
     """
-    if not output_str:
+    if output_str is None:
         return {}
+    if isinstance(output_str, (dict, list)):
+        return output_str
 
-    s = output_str.strip()
-    # remove code fences if present
-    s = re.sub(r"^```(?:json)?", "", s)
-    s = re.sub(r"```$", "", s).strip()
+    s = str(output_str).strip()
+
+    # remove leading/trailing code fences + surrounding whitespace
+    s = re.sub(r"^\s*```(?:json)?\s*", "", s)
+    s = re.sub(r"\s*```\s*$", "", s).strip()
+
+    # normalize smart quotes
+    s = s.translate(str.maketrans({
+        "“": '"', "”": '"', "„": '"', "‟": '"',
+        "‘": "'", "’": "'", "‚": "'", "‛": "'",
+    }))
+
+    # common fixes
+    # 1) semicolon between objects -> comma
+    s = re.sub(r"}\s*;\s*{", "},{", s)
+
+    # 2) missing comma between objects: `}{` -> `},{`
+    s = re.sub(r"}\s*{", "},{", s)
+
+    # 3) remove trailing commas before } or ]
+    s = re.sub(r",\s*(?=[}\]])", "", s)
+
+    # 4) keep only up to the last closing bracket/brace (drop logs like "...")
+    last_close = max(s.rfind("]"), s.rfind("}"))
+    if last_close != -1:
+        s = s[:last_close + 1]
 
     try:
         data = json.loads(s)
+        return data if isinstance(data, (dict, list)) else {}
     except Exception as e:
-        logging.warning(f"JSON parse failed: {e} | text={s[:100]}...")
+        # show a short context around the error to help debugging
+        logging.warning(f"JSON parse failed: {e} | text={s}")
         return {}
 
-    # only accept dicts/lists; otherwise return {}
-    if isinstance(data, (dict, list)):
-        return data
-    return {}
 
 def run_llm_batch_api(prompts, model="gpt-4.1-mini", temperature=0.1, verbose=False, poll_interval=5):
     """

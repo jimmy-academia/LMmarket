@@ -1,7 +1,7 @@
 # data_foundation/benchmark_maker.py
 import random
 from collections import Counter
-from systems.ou import OUBaseline
+from systems.ou import OUBaseline, PROMPT_TEMPLATE
 
 def construct_benchmark(reviews, num_test=5, seed=0):
     rng = random.Random(seed)
@@ -14,8 +14,14 @@ def construct_benchmark(reviews, num_test=5, seed=0):
     hold_ids = set(unique_ids[:num_test])
 
     test_reviews = [r for r in reviews if r["review_id"] in hold_ids]
-    ou = OUBaseline(None, None, None)
-    __ = ou.segmentation(test_reviews, True) # annotates r["opinion_units"] in-place
+    ou = object.__new__(OUBaseline)
+    ou.prompt_template = PROMPT_TEMPLATE
+    ou.ou_model = "gpt-5-nano"
+    ou.ou_temperature = 0
+    ou.num_workers = 128
+
+    units = OUBaseline.segmentation(ou, test_reviews)
+    # annotates r["opinion_units"] in-place
 
     # 4) pack test samples
     tests = []

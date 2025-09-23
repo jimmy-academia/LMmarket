@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 from .base import BaseSystem
 from llm import run_llm_batch, safe_json_parse
 
-from utils import load_or_build
+from utils import load_or_build, dumpj
 
 PROMPT_TEMPLATE = """Perform aspect-based sentiment analysis (ABSA) for the restaurant review provided as input.
 Extract **opinion units**, where each unit consists of:
@@ -145,7 +145,7 @@ class OUBaseline(BaseSystem):
         sel = np.concatenate([sel, order[~np.isin(order, sel)][:max(0, total - len(sel))]])
 
         sel = sorted(sel, key=lambda i: i)[:total]
-        return sel.tolist()
+        return sel
 
     def predict_given_aspects(self, user_id, item_id, aspects):
         all_reviews = [r for r in self.rich_reviews if r.get("item_id") == item_id]
@@ -156,7 +156,7 @@ class OUBaseline(BaseSystem):
 
         if missing:
             built_units = self.segmentation(missing)  
-            dumpj(args.rich_review_path, self.rich_review) 
+            dumpj(self.args.rich_reviews_path, self.rich_reviews) 
 
         pool = [u for r in item_reviews for u in r["opinion_units"]]
         aspect_texts = [u.get("aspect") for u in pool]

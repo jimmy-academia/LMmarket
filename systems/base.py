@@ -23,18 +23,18 @@ class BaseSystem:
         return index
 
     def _prep_tests(self, tests):
-        prepared, ground_truth = [], []
+        test_data, ground_truth = [], []
         for t in tests:
             units   = t.get("opinion_units")
             aspects = [u[0] for u in units]
             scores  = [u[2] for u in units]
-            prepared.append({
+            test_data.append({
                 "user_id":     t.get("user_id"),
                 "item_id":     t.get("item_id"),
                 "aspects": aspects,
             })
             ground_truth.append(scores)
-        return prepared, ground_truth
+        return test_data, ground_truth
 
     # ---------- make predictions ----------
 
@@ -47,17 +47,18 @@ class BaseSystem:
         predictions = []
         for t in self.test_data:
             uid, iid, aspects = t["user_id"], t["item_id"], t["aspects"]
-            sent_score = self.predict_given_aspects(uid, iid, aspects)
-            predictions.append(sent_scores)
+            y_pred = self.predict_given_aspects(uid, iid, aspects)
+            predictions.append(y_pred)
         return predictions
 
     def evaluate(self, predictions):
         sims, accs = [], []
-        for y_pred, y_true in zip(predictions, self.ground_truth):
+
+        for t, y_pred, y_true in zip(self.test_data, predictions, self.ground_truth):
             sim = self._cosine(y_true, y_pred)
             acc = (sum(self._quantize(tp) == self._quantize(pp) for tp, pp in zip(y_true, y_pred)) / len(y_true))
             sims.append(sim); accs.append(acc)
-
+            print(t['aspects'], y_pred, y_true, sim, acc)
         return {
             "similarity": (sum(sims) / len(sims)) if sims else 0.0,
             "accuracy":   (sum(accs) / len(accs)) if accs else 0.0,

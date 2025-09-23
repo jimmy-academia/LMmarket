@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
     # benchmark
-    parser.add_argument('--num_test', type=int, default=10)
+    parser.add_argument('--num_test', type=int, default=2)
     args = parser.parse_args()
 
     args.cache_dir = Path(args.cache_dir)
@@ -86,7 +86,7 @@ def main():
     System = build_system(args, reviews, tests)
     args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
     predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)
-    result = System.evaluate()
+    result = System.evaluate(predictions)
     print(result)
 
 if __name__ == '__main__':
