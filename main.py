@@ -80,6 +80,9 @@ def main():
     End-to-end approach (baseline): eg sparse, dense, 
     """
     print(todos)
+    args.rich_reviews_dir = args.cache_dir/'rich_review'
+    args.rich_reviews_dir.mkdir(exist_ok=True)
+    args.rich_reviews_path = args.rich_reviews_dir/f'args.div_name.json'
     System = build_system(args, reviews, tests)
     args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
     predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)

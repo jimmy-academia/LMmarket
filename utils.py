@@ -2,6 +2,7 @@
 import re
 import json
 import pickle
+from pathlib import Path
 
 def readf(path):
     with open(path, 'r') as f:
@@ -35,6 +36,7 @@ def loadp(filepath):
         return pickle.load(f)
 
 def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
+    path = Path(path)
     exists = path.exists() if hasattr(path, "exists") else Path(path).exists()
     if exists:
         print(f"[load_or_build] >>> {path} exists, loading...")

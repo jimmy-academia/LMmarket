@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+from utils import load_or_build, dumpj, loadj
+
 class BaseSystem:
     def __init__(self, args, reviews, tests):
         self.args = args
@@ -7,6 +9,8 @@ class BaseSystem:
         self.test_review_ids = [t["review_id"] for t in self.tests]
 
         self.reviews = [r for r in reviews if r["review_id"] not in self.test_review_ids]
+        
+        self.rich_reviews = load_or_build(args.rich_reviews_path, dumpj, loadj, lambda x:x, self.reviews)
 
         self.user_index = self._build_user_index()
         self.test_data, self.ground_truth = self._prep_tests(self.tests)

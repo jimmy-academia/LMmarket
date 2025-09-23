@@ -1,4 +1,5 @@
 # https://github.com/emilhagl/Opinion-Units
+import json
 import torch
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -6,26 +7,9 @@ from sentence_transformers import SentenceTransformer
 from .base import BaseSystem
 from llm import run_llm_batch, safe_json_parse
 
-class OUBaseline(BaseSystem):
-    """
-    Opinion-Units baseline (faithful):
-    - Few-shot style instructions that mirror Figure 4 (Appendix A).
-    - Extract a JSON list of {aspect, sentiment, excerpt}.
-    - Attach to each review as r["opinion_units"].
-    - Includes create_query_string for building strings to embed.
-    """
-    def __init__(self, args, reviews, tests):
-        super().__init__(args, reviews, tests)
-        self.ou_model = "gpt-5-nano"
-        self.ou_temperature = 0
-        self.num_workers = 128
+from utils import load_or_build
 
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = SentenceTransformer(model_name, device=device)
-
-    # ---- inline prompt (faithful to Figure 4) ----
-    PROMPT_TEMPLATE = """Perform aspect-based sentiment analysis (ABSA) for the restaurant review provided as input.
+PROMPT_TEMPLATE = """Perform aspect-based sentiment analysis (ABSA) for the restaurant review provided as input.
 Extract **opinion units**, where each unit consists of:
   - "aspect": the specific aspect that is being evaluated (use concise aspect terms; may be "overall experience" if no specific aspect fits),
   - "sentiment": one of {"positive","neutral","negative"},
@@ -51,8 +35,28 @@ Input (review text):
 {TEXT}
 """
 
+class OUBaseline(BaseSystem):
+    """
+    Opinion-Units baseline (retrofit):
+    """
+    def __init__(self, args, reviews, tests):
+        super().__init__(args, reviews, tests)
+        '''
+        in basesystem
+        - self.reviews
+        - self.rich_reviews
+        '''
+        self.ou_model = "gpt-5-nano"
+        self.ou_temperature = 0
+        self.num_workers = 128
+        self.prompt_template = PROMPT_TEMPLATE
+
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=device)
+
     def _make_prompt(self, doc_text: str) -> str:
-        return self.PROMPT_TEMPLATE.replace("{TEXT}", doc_text)
+        return self.prompt_template.replace("{TEXT}", doc_text)
 
     def _normalize_unit(self, u: dict) -> dict:
         aspect = (u.get("aspect") or "").strip()
@@ -89,6 +93,7 @@ Input (review text):
             units = [self._normalize_unit(u) for u in units_raw if isinstance(u, dict)]
             # de-duplicate (aspect, sentiment, excerpt)
             units = list({(u["aspect"], u["sentiment"], u["excerpt"]): u for u in units}.values())
+            # save back into original place
             r["opinion_units"] = units
             all_units.append(units)
 
@@ -122,13 +127,36 @@ Input (review text):
         )
         return embs.cpu().numpy().astype("float32")
 
+    # ----- Final retrofit for aspect-based sentiment prediction -----
+    def _pick_top_even(self, reviews, aspects, total=100):
+        R = self.embed_texts([r["text"] for r in reviews])   # [N,D]
+        T = self.embed_texts(aspects)                        # [Q,D]
+        S = T @ R.T                                          # [Q,N]  
+        Q, N = S.shape[0], S.shape[1]
+        total = min(total, N)
+        quota = max(1, total // Q)
+
+        # per-aspect picks (even split), then de-dup
+        per = np.concatenate([np.argsort(S[q])[::-1][:quota] for q in range(Q)])  # top quota per row
+        sel = np.unique(per)
+
+        # one-line global top-up to reach exactly `total`
+        g = S.max(axis=0); order = np.argsort(g)[::-1]
+        sel = np.concatenate([sel, order[~np.isin(order, sel)][:max(0, total - len(sel))]])
+
+        sel = sorted(sel, key=lambda i: i)[:total]
+        return sel.tolist()
+
     def predict_given_aspects(self, user_id, item_id, aspects):
-        print('WARNING: align to item_id @ data_foundataion')
-        item_reviews = [r for r in self.reviews if r.get("business_id") == item_id]
-        item_reviews = item_reviews[:4]
-        print('WARNING: do persistent!!')
-        if any("opinion_units" not in r for r in item_reviews):
-            self.segmentation(item_reviews)
+        all_reviews = [r for r in self.rich_reviews if r.get("item_id") == item_id]
+        sel_idx = self._pick_top_even(all_reviews, aspects, total=100)
+        item_reviews = [all_reviews[i] for i in sel_idx]
+
+        missing = [r for r in item_reviews if "opinion_units" not in r]
+
+        if missing:
+            built_units = self.segmentation(missing)  
+            dumpj(args.rich_review_path, self.rich_review) 
 
         pool = [u for r in item_reviews for u in r["opinion_units"]]
         aspect_texts = [u.get("aspect") for u in pool]
@@ -137,19 +165,22 @@ Input (review text):
         # encode once
         U_aspect = self.embed_texts(aspect_texts)
         U_excerpt = self.embed_texts(excerpt_texts)
+        T_aspect = self.embed_texts(aspects)                    # [Q, D]
         
-        T_aspect = self.embed_texts(aspects)
 
         alpha = 0.8
         S_a = T_aspect @ U_aspect.T
         S_e = T_aspect @ U_excerpt.T
         S = alpha * S_a + (1.0 - alpha) * S_e
 
+        # threshold on how similar; must be at least min_sim
         min_sim = 0.5
         mask = S >= min_sim
         S = np.where(mask, S, 0.0)
 
-        k = 16
+        # threshold on how many, get top k
+        k = 16 
+        k = min(k, S.shape[1])
         idx = np.argpartition(S, -k, axis=1)[:, -k:]
         m = np.zeros_like(S, dtype=bool); m[np.arange(S.shape[0])[:,None], idx] = True
         S = np.where(m, S, 0.0)
@@ -160,7 +191,5 @@ Input (review text):
         num = S @ y_vec                 # [Q]
         den = S.sum(axis=1) + 1e-9      # [Q]
         scores = num / den                     # [Q], in [-1,1]
-
-        input('just do 1, fix the warnings!!')
 
         return scores.tolist()

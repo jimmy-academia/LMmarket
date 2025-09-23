@@ -102,7 +102,7 @@ def load_entries(review_file, tip_file, biz_to_city):
                     row = {
                         "review_id": rid,
                         "user_id": uid,
-                        "business_id": bid,
+                        "item_id": bid, # align to item_id
                         "text": text,
                         "kind": kind,
                     }
