@@ -19,7 +19,7 @@ def construct_benchmark(reviews, num_test=5, seed=0):
     ou.ou_model = "gpt-5-nano"
     ou.ou_temperature = 0
     ou.num_workers = 128
-
+    input('check')
     units = OUBaseline.segmentation(ou, test_reviews)
     # annotates r["opinion_units"] in-place
 

@@ -72,12 +72,17 @@ def _extract_usage(resp):
     return int(pt), int(ct)
 
 # ---- query (sync) ----
-def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False):
+def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     messages = [{"role": "user", "content": prompt}]
     kwargs = {"model": model, "messages": messages}
+    if use_json:
+        if json_schema:
+            kwargs["response_format"] = {"type": "json_schema", "json_schema": json_schema}
+        else:
+            kwargs["response_format"] = {"type": "json_object"}
     if not model.lower().startswith("gpt-5"):
         kwargs["temperature"] = temperature
 
@@ -92,7 +97,7 @@ def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False):
     return content
 
 # ---- query (async) ----
-async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False):
+async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False, json_schema=None, use_json=False):
     """
     If return_usage=True, returns (content, pt, ct); else returns content.
     """
@@ -106,6 +111,11 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
     async with sem:
         messages = [{"role": "user", "content": prompt}]
         kwargs = {"model": model, "messages": messages}
+        if use_json:
+            if json_schema:
+                kwargs["response_format"] = {"type": "json_schema", "json_schema": json_schema}
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
         if not model.lower().startswith("gpt-5"):
             kwargs["temperature"] = temperature
 
@@ -120,11 +130,12 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def run_llm_batch(prompts, model="gpt-4.1-mini", temperature=0.1, num_workers=8, verbose=False):
+def run_llm_batch(prompts, task_name, model="gpt-4.1-mini", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
     """
+    print(f'[run_llm_batch] global task name: {task_name}')
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
 
@@ -137,6 +148,8 @@ def run_llm_batch(prompts, model="gpt-4.1-mini", temperature=0.1, num_workers=8,
                     sem=sem,
                     verbose=False,
                     return_usage=with_usage,
+                    json_schema=json_schema,
+                    use_json=use_json,
                 )
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")

@@ -22,8 +22,8 @@ from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='ou') 
-    # best, sat, ou
+    parser.add_argument('--system', type=str, default='sulm') 
+    # best, sat, ou, sulm
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
     # benchmark
@@ -80,9 +80,9 @@ def main():
     End-to-end approach (baseline): eg sparse, dense, 
     """
     print(todos)
-    args.rich_reviews_dir = args.cache_dir/'rich_review'
-    args.rich_reviews_dir.mkdir(exist_ok=True)
-    args.rich_reviews_path = args.rich_reviews_dir/f'args.div_name.json'
+    args.rich_rev_dir = args.cache_dir/'rich_review'
+    args.rich_rev_dir.mkdir(exist_ok=True)
+    args.rich_reviews_path = args.rich_rev_dir/f'{args.div_name}.json'
     System = build_system(args, reviews, tests)
     args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
     predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)

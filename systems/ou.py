@@ -35,6 +35,25 @@ Input (review text):
 {TEXT}
 """
 
+OPINION_UNIT_JSON_SCHEMA = {
+    "name": "opinion_units",
+    "schema": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "aspect": {"type": "string"},
+                "sentiment": {"type": "string"},
+                "sentiment_score": {"type": "number"},
+                "excerpt": {"type": "string"},
+            },
+            "required": ["aspect", "sentiment", "excerpt", "sentiment_score"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 class OUBaseline(BaseSystem):
     """
     Opinion-Units baseline (retrofit):
@@ -50,7 +69,7 @@ class OUBaseline(BaseSystem):
         self.ou_temperature = 0
         self.num_workers = 128
         self.prompt_template = PROMPT_TEMPLATE
-
+        self.ou_json_schema = OPINION_UNIT_JSON_SCHEMA
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = SentenceTransformer(model_name, device=device)
@@ -84,7 +103,9 @@ class OUBaseline(BaseSystem):
             model=self.ou_model,
             temperature=self.ou_temperature,
             num_workers=self.num_workers,
-            verbose=True
+            verbose=True,
+            json_schema=self.ou_json_schema,
+            use_json=True,
         )
         all_units = []
         for r, out_str in zip(reviews, raw_outputs):
