@@ -3,7 +3,7 @@ from collections import defaultdict
 from utils import load_or_build, dumpj, loadj
 
 class BaseSystem:
-    def __init__(self, args, reviews, tests):
+    def __init__(self, args, DATA):
         self.args = args
         self.tests = tests
         self.test_review_ids = [t["review_id"] for t in self.tests]
@@ -90,3 +90,6 @@ class BaseSystem:
         na  = sum(x*x for x in a) ** 0.5
         nb  = sum(y*y for y in b) ** 0.5
         return dot / (na * nb) if na and nb else 0.0
+
+
+class HeuristicBaseline(BaseSystem):

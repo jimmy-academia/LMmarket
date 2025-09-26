@@ -22,8 +22,8 @@ from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='sulm') 
-    # best, sat, ou, sulm
+    parser.add_argument('--system', type=str, default='heur') 
+    # heur, sat, ou, sulm, sugar
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
     # benchmark
@@ -42,28 +42,12 @@ def main():
     args.cache_dir.mkdir(exist_ok=True)
     args.prepared_data_path = args.cache_dir/f"prepared_{args.dset}_data.json"
     DATA = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
-    
 
-    print('todo: load test request')
-    System = build_system(args, reviews, tests)
-    mock_requests = [
-    ["I’m looking for a ramen shop where the broth is rich and flavorful but the wait time isn’t too long.",
-     ["ramen broth flavor", "service speed / wait time"]],
-     
-    ["Show me sushi places with the freshest fish and friendly staff.",
-     ["sushi freshness", "staff friendliness"]],
-     
-    ["I want a brunch spot that has delicious pancakes but also plenty of parking nearby.",
-     ["pancake taste", "parking availability"]],
-    ]
+    System = build_system(args, DATA)
 
-    System.serve(mock_requests)
-    System.evaluate()
+    # for city in DATA["USERS"].keys():
+    city = 'saint louise'
+
 
 if __name__ == '__main__':
     main()
-
-# request (with aspect parse) -> item -> (detailed) utility score
-# evaluation:
-# synthetic => score
-# online learning approx real world score
