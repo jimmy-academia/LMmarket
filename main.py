@@ -57,37 +57,62 @@ def main():
     args.testdata_path = args.cache_dir/f"test_data_{args.div_name}.json"
 
     reviews = DATA['REVIEWS'][city]
-    tests = load_or_build(args.testdata_path, dumpj, loadj, construct_benchmark, reviews, args.num_test)
-    
-    todos = """
-    Now we are at square 1, but we know where we want to go.
-    1. Design method. Train model to disect evident unit
-        We are now going into the details
-            - Found model: TARGER or AMTM
-            - LLM label
-            - train
-            (LLM in the loop guidance)
-            1- validate, observe error
-            2- random sample confidence score, LLM feedback
-            3-> use LLM to create rule or device to retrieve more of a type of error??
-            https://chatgpt.com/c/68cb3dbb-1c48-832f-8612-feb69e72e99b
-    2. Baseline method.   
 
-    Pipeline approach (proposed and baseline):
-        -> review to exerpts segment
-        -> cluster and retrieval model
-        -> utility model
-    End-to-end approach (baseline): eg sparse, dense, 
+
+    # tests = load_or_build(args.testdata_path, dumpj, loadj, construct_benchmark, reviews, args.num_test)
+    
+    # todos = """
+    # Now we are at square 1, but we know where we want to go.
+    # 1. Design method. Train model to disect evident unit
+    #     We are now going into the details
+    #         - Found model: TARGER or AMTM
+    #         - LLM label
+    #         - train
+    #         (LLM in the loop guidance)
+    #         1- validate, observe error
+    #         2- random sample confidence score, LLM feedback
+    #         3-> use LLM to create rule or device to retrieve more of a type of error??
+    #         https://chatgpt.com/c/68cb3dbb-1c48-832f-8612-feb69e72e99b
+    # 2. Baseline method.   
+
+    # Pipeline approach (proposed and baseline):
+    #     -> review to exerpts segment
+    #     -> cluster and retrieval model
+    #     -> utility model
+    # End-to-end approach (baseline): eg sparse, dense, 
+    # """
+    # print(todos)
+    # args.rich_rev_dir = args.cache_dir/'rich_review'
+    # args.rich_rev_dir.mkdir(exist_ok=True)
+    # args.rich_reviews_path = args.rich_rev_dir/f'{args.div_name}.json'
+    # System = build_system(args, reviews, tests)
+    # args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
+    # predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)
+    # result = System.evaluate(predictions)
+    # print(result)
+
+    new_todo = """
+    request (with aspect parse) -> item -> (detailed) utility score
+    evaluation:
+    synthetic => score
+    online learning approx real world score
     """
-    print(todos)
-    args.rich_rev_dir = args.cache_dir/'rich_review'
-    args.rich_rev_dir.mkdir(exist_ok=True)
-    args.rich_reviews_path = args.rich_rev_dir/f'{args.div_name}.json'
+    print(new_todo)
+    print('todo: load test request')
     System = build_system(args, reviews, tests)
-    args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
-    predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)
-    result = System.evaluate(predictions)
-    print(result)
+    mock_requests = [
+    ["I’m looking for a ramen shop where the broth is rich and flavorful but the wait time isn’t too long.",
+     ["ramen broth flavor", "service speed / wait time"]],
+     
+    ["Show me sushi places with the freshest fish and friendly staff.",
+     ["sushi freshness", "staff friendliness"]],
+     
+    ["I want a brunch spot that has delicious pancakes but also plenty of parking nearby.",
+     ["pancake taste", "parking availability"]],
+    ]
+
+    System.serve(mock_requests)
+    System.evaluate()
 
 if __name__ == '__main__':
     main()

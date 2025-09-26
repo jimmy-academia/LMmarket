@@ -22,34 +22,45 @@ class BaseSystem:
             index[user_id].append(r)
         return index
 
-    def _prep_tests(self, tests):
-        test_data, ground_truth = [], []
-        for t in tests:
-            units   = t.get("opinion_units")
-            aspects = [u[0] for u in units]
-            scores  = [u[2] for u in units]
-            test_data.append({
-                "user_id":     t.get("user_id"),
-                "item_id":     t.get("item_id"),
-                "aspects": aspects,
-            })
-            ground_truth.append(scores)
-        return test_data, ground_truth
-
-    # ---------- make predictions ----------
-
-    def predict_given_aspects(self, user_id, item_id, aspects):
-        """Return list of floats (same length as aspects)"""
+    def serve_one_request(self, aspect_list):
         raise NotImplementedError("predict_with_aspect must be implemented by subclass")
 
-    def predict_all(self):
-        """Iterate over self.test_data and call predict_with_aspect for each aspect."""
-        predictions = []
-        for t in self.test_data:
-            uid, iid, aspects = t["user_id"], t["item_id"], t["aspects"]
-            y_pred = self.predict_given_aspects(uid, iid, aspects)
-            predictions.append(y_pred)
-        return predictions
+    def serve(self, requests):
+        for request, aspect_list in requests:
+            self.serve_one_request(request, aspect_list)
+    
+    def evaluate(self):
+        
+
+
+    # def _prep_tests(self, tests):
+    #     test_data, ground_truth = [], []
+    #     for t in tests:
+    #         units   = t.get("opinion_units")
+    #         aspects = [u[0] for u in units]
+    #         scores  = [u[2] for u in units]
+    #         test_data.append({
+    #             "user_id":     t.get("user_id"),
+    #             "item_id":     t.get("item_id"),
+    #             "aspects": aspects,
+    #         })
+    #         ground_truth.append(scores)
+    #     return test_data, ground_truth
+
+    # # ---------- make predictions ----------
+
+    # def predict_given_aspects(self, user_id, item_id, aspects):
+    #     """Return list of floats (same length as aspects)"""
+    #     raise NotImplementedError("predict_with_aspect must be implemented by subclass")
+
+    # def predict_all(self):
+    #     """Iterate over self.test_data and call predict_with_aspect for each aspect."""
+    #     predictions = []
+    #     for t in self.test_data:
+    #         uid, iid, aspects = t["user_id"], t["item_id"], t["aspects"]
+    #         y_pred = self.predict_given_aspects(uid, iid, aspects)
+    #         predictions.append(y_pred)
+    #     return predictions
 
     def evaluate(self, predictions):
         sims, accs = [], []
