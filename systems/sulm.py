@@ -8,7 +8,6 @@ import logging
 import pickle
 import json
 
-
 '''
 SentimentUtilityLogisticModel class implements
     Sentiment Utility Logistic Model (SULM).
@@ -623,80 +622,207 @@ class SentimentUtilityLogisticModel():
         self.profile_items = pickle.load(open(filename+'item_profiles', 'rb'))
 
 
-
-     
-# if __name__ == '__main__':
-#     logger = logging.getLogger('signature')
-#     logging.basicConfig(format='%(asctime)s : %(name)-12s: %(levelname)s : %(message)s')
-#     logging.root.setLevel(level=logging.DEBUG)
-#     logger.info("running %s" % ' '.join(sys.argv))
-    
-#     ratings = [['user1','item1',1,1,1,0],
-#                ['user1','item2',1,0,1,0],
-#                ['user2','item1',0,1,0,1],
-#                ['user2','item2',0,np.nan,0,1],
-#                ['user2','item3',1,1,0,1],
-#                ['user3','item1',1,np.nan,0,0],
-#                ['user3','item2',0,np.nan,0,1],
-#                ['user3','item3',1,1,1,1],
-#                ['user4','item3',1,0,1,1],
-#                ['user4','item1',0,1,0,1],
-#                ['user4','item2',1,0,1,1]
-#                ]
-    
-#     np.random.seed(241)
-#     aspects = ['food','service','decor']
-#     model = SentimentUtilityLogisticModel(logger, ratings, num_aspects=len(aspects), num_factors=5,
-#                                           lambda_b = 0.05, lambda_pq = 0.05, lambda_z = 0.05, lambda_w = 0.05,
-#                                           gamma=2.0, iterations=5, alpha=0.5, 
-#                                           l1 = False, l2 = True, mult = False)
-    
-# #     model.sentiments_correlation()
-#     model.train_model()
-
-#     logger.info('Average Sentiments:\n%s'%str(list(zip(aspects, model.avg_sentiments))))
-#     model.pretty_save('readable_model.txt')
-#     model.predict_train()
-#     model.save('model_test_')
-
-#     modelnew = SentimentUtilityLogisticModel(logger, ratings,num_aspects=len(aspects), num_factors=5,
-#                                              lambda_b = 0.01, lambda_pq = 0.01, lambda_z = 0.08, lambda_w = 0.01,
-#                                              gamma=0.001,iterations=30, alpha=0.00)
-#     modelnew.load('model_test_')
-
-#     testset = [['user1','item3'],
-#                ['user1','item4'],
-#                ['user2','item4']
-#                ]
-#     modelnew.predict_test(testset,'model_test.txt')
+# --------------------------- DP + Baseline Wrapper ----------------------------------------------
 
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 import math
-import logging
 
-import torch
-from sentence_transformers import SentenceTransformer
+import spacy  # UD dependencies for DP
 
 from .base import BaseSystem
-from .ou import OUBaseline
+
+
+# ----- DP helpers (Qiu et al., 2011; mapped to UD deps) -----
+
+JJ = {"ADJ"}
+NN = {"NOUN", "PROPN"}
+PRON_TARGETS = {"it", "they"}
+
+def load_lexicon(path_pos: str, path_neg: str) -> Tuple[set, set]:
+    pos = {w.strip().lower() for w in Path(path_pos).read_text(encoding="utf-8", errors="ignore").splitlines()
+           if w and not w.startswith(";")}
+    neg = {w.strip().lower() for w in Path(path_neg).read_text(encoding="utf-8", errors="ignore").splitlines()
+           if w and not w.startswith(";")}
+    return pos, neg
+
+def is_negated(tok) -> bool:
+    return any(c.dep_ == "neg" for c in tok.children) or tok.dep_ == "neg" or any(a.dep_ == "neg" for a in tok.ancestors)
+
+def normalize_aspect(tok):
+    lem = tok.lemma_.strip().lower()
+    if lem in PRON_TARGETS:
+        return None
+    if tok.pos_ in NN and lem.isalpha():
+        return lem
+    return None
+
+def adjective_form(tok):
+    if tok.pos_ in JJ and tok.lemma_.isalpha():
+        return tok.lemma_.lower()
+    return None
+
+def dp_extract_from_doc(doc, seeds_pos: set, seeds_neg: set, max_iters: int = 5) -> Tuple[set, Dict[str, int]]:
+    """Return (targets, opinions{word->+1/-1}) using DP rules R11–R42 mapped to UD."""
+    O: Dict[str, int] = {}
+    T: set = set()
+
+    # init opinions from seeds present in doc
+    for t in doc:
+        w = adjective_form(t)
+        if not w: 
+            continue
+        if w in seeds_pos: O[w] = +1
+        elif w in seeds_neg: O[w] = -1
+
+    def adopt(word: str, ori: int) -> bool:
+        if word not in O:
+            O[word] = ori
+            return True
+        return False
+
+    changed = True
+    it = 0
+    while changed and it < max_iters:
+        changed = False
+        it += 1
+
+        # R11/R12: opinions -> targets (amod; copular ADJ with nsubj)
+        for tok in doc:
+            w = adjective_form(tok)
+            if not w or w not in O: 
+                continue
+            # amod: ADJ -> NOUN
+            if tok.dep_ == "amod" and tok.head.pos_ in NN:
+                a = normalize_aspect(tok.head)
+                if a and a not in T:
+                    T.add(a); changed = True
+            # copular pred: ADJ head with nsubj NOUN
+            if tok.pos_ == "ADJ":
+                for child in tok.children:
+                    if child.dep_ == "nsubj" and child.pos_ in NN:
+                        a = normalize_aspect(child)
+                        if a and a not in T:
+                            T.add(a); changed = True
+
+        # R31/R32: targets -> targets (conj siblings, same-head same-dep)
+        for tok in doc:
+            if tok.pos_ in NN and normalize_aspect(tok) in T:
+                # conj siblings
+                for sib in tok.conjuncts:
+                    if sib.pos_ in NN:
+                        a = normalize_aspect(sib)
+                        if a and a not in T:
+                            T.add(a); changed = True
+                # same-head same-dep nouns
+                if tok.head and tok.dep_ in {"nmod", "obl", "obj"}:
+                    for sib in tok.head.children:
+                        if sib is tok: 
+                            continue
+                        if sib.dep_ == tok.dep_ and sib.pos_ in NN:
+                            a = normalize_aspect(sib)
+                            if a and a not in T:
+                                T.add(a); changed = True
+
+        # R41/R42: opinions -> opinions (ADJ conj; co-modifiers of same NOUN)
+        for tok in doc:
+            if tok.pos_ != "ADJ":
+                continue
+            w = adjective_form(tok)
+            if not w or w not in O: 
+                continue
+            # conj
+            for sib in tok.conjuncts:
+                ws = adjective_form(sib)
+                if ws:
+                    changed |= adopt(ws, O[w])
+            # co-amod on same noun
+            if tok.head and tok.dep_ == "amod":
+                for sib in tok.head.children:
+                    if sib is tok: 
+                        continue
+                    if sib.dep_ == "amod" and sib.pos_ == "ADJ":
+                        ws = adjective_form(sib)
+                        if ws:
+                            changed |= adopt(ws, O[w])
+
+        # R21/R22: targets -> opinions (amod on T; copular ADJ with T as nsubj)
+        for tok in doc:
+            if tok.pos_ in NN and normalize_aspect(tok) in T:
+                # amod children
+                for child in tok.children:
+                    if child.dep_ == "amod" and child.pos_ == "ADJ":
+                        w = adjective_form(child)
+                        if w:
+                            pol = +1
+                            if is_negated(child): pol = -pol
+                            changed |= adopt(w, pol)
+                # copular predicate
+                head = tok.head
+                if head and head.pos_ == "ADJ" and any(c.dep_ == "nsubj" and c is tok for c in head.children):
+                    w = adjective_form(head)
+                    if w:
+                        pol = +1
+                        if is_negated(head): pol = -pol
+                        changed |= adopt(w, pol)
+
+    # drop pronouns as targets
+    T = {t for t in T if t not in PRON_TARGETS}
+    return T, O
+
+def aggregate_review_aspect_labels(doc, targets: set, opinions: Dict[str,int],
+                                   pos_seeds: set, neg_seeds: set, neutral_band=0.33) -> Dict[str, float]:
+    """Return {aspect -> {1,0,NaN}} via sentiment ratio over local opinion links."""
+    counts = {a: {"pos": 0, "neg": 0} for a in targets}
+    seedset = set(opinions.keys()) | pos_seeds | neg_seeds
+
+    for sent in doc.sents:
+        for tok in sent:
+            a = normalize_aspect(tok)
+            if not a or a not in targets:
+                continue
+            # amod child adjectives
+            for child in tok.children:
+                if child.dep_ == "amod" and child.pos_ == "ADJ":
+                    w = adjective_form(child)
+                    if not w or w not in seedset:
+                        continue
+                    pol = opinions.get(w, (+1 if w in pos_seeds else -1))
+                    if is_negated(child): pol = -pol
+                    if pol > 0: counts[a]["pos"] += 1
+                    else: counts[a]["neg"] += 1
+            # copular predicate ADJ head with nsubj = tok
+            head = tok.head
+            if head and head.pos_ == "ADJ" and any(c.dep_ == "nsubj" and c is tok for c in head.children):
+                w = adjective_form(head)
+                if w and w in seedset:
+                    pol = opinions.get(w, (+1 if w in pos_seeds else -1))
+                    if is_negated(head): pol = -pol
+                    if pol > 0: counts[a]["pos"] += 1
+                    else: counts[a]["neg"] += 1
+
+    labels: Dict[str, float] = {}
+    for a, c in counts.items():
+        total = c["pos"] + c["neg"]
+        if total == 0:
+            labels[a] = np.nan
+        else:
+            score = (c["pos"] - c["neg"]) / float(total)
+            if score >= neutral_band: labels[a] = 1.0
+            elif score <= -neutral_band: labels[a] = 0.0
+            else: labels[a] = np.nan
+    return labels
 
 
 class SULMBaseline(BaseSystem):
     """
-    Retrofit of kobauman/SULM to your BaseSystem:
-      • Builds a fixed aspect vocab from OU-labeled reviews (top-K by frequency).
-      • Trains SULM on rows: [user_id, item_id, overall(0/1), s_aspect1..K] with s ∈ {1,0,nan}.
-      • Predicts per requested aspects; unknown aspect names are mapped to nearest vocab entry
-        via MiniLM embeddings (cosine similarity threshold).
-      • Returns scores in [-1, 1], matching your evaluator.
-
-    Disk layout (under cache_dir / sulm_{div_name}):
-      meta.json
-      model_{{mu,av_sent,z,user_profiles,item_profiles}}   # SULM's own save shards
+    Strict SULM baseline with Double Propagation (DP) preprocessing:
+      • Runs DP on UD dependencies (spaCy) to extract aspects + propagate opinion seeds.
+      • Aggregates per-review aspect polarities to {1,0,NaN}.
+      • Trains SULM on rows: [user, item, overall(0/1), s_aspect1..K].
+      • Saves/loads SULM shards + a meta.json (vocab, priors, hparams).
+      • Serves predict_given_aspects → scores in [-1, 1] (one per requested aspect).
     """
-
-    # ------------------------- public API -------------------------
 
     def __init__(self, args, reviews, tests):
         super().__init__(args, reviews, tests)
@@ -709,11 +835,14 @@ class SULMBaseline(BaseSystem):
         self.meta_path    = self.bundle_dir / "meta.json"
         self.model_prefix = self.bundle_dir / "model_"
 
-        # knobs (sane baselines; override via CLI/args)
-        self.max_vocab     = getattr(self.args, "sulm_max_vocab", 200)
-        self.label_limit   = getattr(self.args, "sulm_label_limit", 4000)
-        self.neutral_band  = getattr(self.args, "sulm_neutral_band", 0.33)
-        self.map_threshold = getattr(self.args, "sulm_map_threshold", 0.45)
+        # knobs
+        self.max_vocab          = getattr(self.args, "sulm_max_vocab", 200)
+        self.neutral_band       = getattr(self.args, "sulm_neutral_band", 0.33)
+        self.overall_threshold  = getattr(self.args, "sulm_overall_threshold", 4.0)
+        self.dp_max_iters       = getattr(self.args, "dp_max_iters", 5)
+        self.dp_spacy_model     = getattr(self.args, "dp_spacy_model", "en_core_web_sm")
+        self.dp_pos_lex         = getattr(self.args, "dp_pos_lex")
+        self.dp_neg_lex         = getattr(self.args, "dp_neg_lex")
 
         self.num_factors = getattr(self.args, "sulm_num_factors", 8)
         self.iterations  = getattr(self.args, "sulm_iterations", 30)
@@ -725,42 +854,43 @@ class SULMBaseline(BaseSystem):
         self.gamma       = getattr(self.args, "sulm_gamma", 0.001)
         self.use_mult    = getattr(self.args, "sulm_mult", False)
 
-        # encoder for aspect-name fallback mapping
-        model_name = getattr(self.args, "aspect_encoder_name", "sentence-transformers/all-MiniLM-L6-v2")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.encoder = SentenceTransformer(model_name, device=device)
+        # logger
+        self.logger = logging.getLogger("sulm")
+        self.logger.setLevel(logging.INFO)
 
-        # will be set by load/train
+        # trained state
         self.model = None
         self.vocab: List[str] = []
         self.a2i: Dict[str, int] = {}
-        self.vocab_embeds = None
         self.aspect_priors: List[float] = []
 
         self._load_or_train()
 
+    # ------------------------- API -------------------------
+
     def predict_given_aspects(self, user_id: str, item_id: str, aspects: List[str]) -> List[float]:
-        """
-        Return one score per input aspect in [-1, 1].
-        """
         r_prob, s_probs = self._predict_base(user_id, item_id)
-        # drop the constant slot if present
         if len(s_probs) == len(self.vocab) + 1:
             s_probs = s_probs[:-1]
         assert len(s_probs) == len(self.vocab), "SULM returned unexpected sentiment vector length"
-        s_scores = 2.0 * s_probs - 1.0  # map [0,1] -> [-1,1]
-
+        scores = 2.0 * np.asarray(s_probs, dtype=float) - 1.0
         out: List[float] = []
         for name in aspects:
-            j = self._aspect_to_index(name)
+            j = self._lookup_index(name)
             if j is not None:
-                out.append(float(s_scores[j]))
+                out.append(float(scores[j]))
             else:
-                # conservative fallback to overall: [-1,1] centered at 0
-                out.append(float(2.0 * r_prob - 1.0))
+                # neutral fallback; swap to (2*r_prob-1) if you prefer overall influence
+                out.append(0.0)
         return out
 
-    # ------------------------- training / loading -------------------------
+    # ------------------------- train/load -------------------------
+
+    def _bundle_ready(self) -> bool:
+        if not self.meta_path.exists():
+            return False
+        shards = ["mu", "av_sent", "z", "user_profiles", "item_profiles"]
+        return all(Path(str(self.model_prefix) + s).exists() for s in shards)
 
     def _load_or_train(self) -> None:
         if self._bundle_ready():
@@ -768,13 +898,9 @@ class SULMBaseline(BaseSystem):
             self.vocab = list(meta["vocab"])
             self.aspect_priors = list(meta["priors"])
             self.a2i = {a: i for i, a in enumerate(self.vocab)}
-
-            logger = logging.getLogger("sulm")
-            logger.setLevel(logging.INFO)
-            # Create a lightweight shell and load trained weights
             self.model = SentimentUtilityLogisticModel(
-                logger=logger,
-                ratings=[],  # placeholder
+                logger=self.logger,
+                ratings=[],
                 num_aspects=len(self.vocab),
                 num_factors=meta["num_factors"],
                 lambda_b=meta["lambda_b"],
@@ -784,30 +910,23 @@ class SULMBaseline(BaseSystem):
                 gamma=meta["gamma"],
                 iterations=meta["iterations"],
                 alpha=meta["alpha"],
-                l1=False,
-                l2=True,
-                mult=meta["mult"],
+                l1=False, l2=True, mult=meta["mult"],
             )
             self.model.load(str(self.model_prefix))
-            self._encode_vocab()
             return
 
-        # Ensure labels exist (annotate a subset with OU if missing)
-        self._ensure_labels()
+        # DP prep → ratings
+        ratings, vocab, priors = self._build_ratings_with_dp(self.reviews)
+        assert ratings and vocab, "No training data after DP; cannot train SULM."
 
-        # Build ratings + vocab from labeled reviews
-        ratings, vocab, priors = self._build_ratings(self.reviews)
-        assert len(ratings) > 0 and len(vocab) > 0, "No training data after labeling; cannot train SULM."
         self.vocab = vocab
         self.aspect_priors = priors
         self.a2i = {a: i for i, a in enumerate(self.vocab)}
 
-        # Train SULM
-        logger = logging.getLogger("sulm")
-        logger.setLevel(logging.INFO)
+        # train
         np.random.seed(241)
         self.model = SentimentUtilityLogisticModel(
-            logger=logger,
+            logger=self.logger,
             ratings=ratings,
             num_aspects=len(self.vocab),
             num_factors=self.num_factors,
@@ -818,13 +937,11 @@ class SULMBaseline(BaseSystem):
             gamma=self.gamma,
             iterations=self.iterations,
             alpha=self.alpha,
-            l1=False,
-            l2=True,
-            mult=self.use_mult,
+            l1=False, l2=True, mult=self.use_mult,
         )
         self.model.train_model(l1=False, l2=True)
 
-        # Save bundle
+        # save
         meta = {
             "vocab": self.vocab,
             "priors": self.aspect_priors,
@@ -840,139 +957,96 @@ class SULMBaseline(BaseSystem):
         }
         json.dump(meta, open(self.meta_path, "w"))
         self.model.save(str(self.model_prefix))
-        self._encode_vocab()
 
-    def _bundle_ready(self) -> bool:
-        if not self.meta_path.exists():
-            return False
-        shards = ["mu", "av_sent", "z", "user_profiles", "item_profiles"]
-        return all((self.model_prefix.as_posix() + s).startswith(self.model_prefix.as_posix()) or True
-                   for s in shards) and all(Path(str(self.model_prefix) + s).exists() for s in shards)
+    # ------------------------- DP → ratings -------------------------
 
-    # ------------------------- label / ratings prep -------------------------
+    def _build_ratings_with_dp(self, reviews: List[dict]) -> Tuple[List[List[Any]], List[str], List[float]]:
+        assert self.dp_pos_lex and self.dp_neg_lex, "Set args.dp_pos_lex and args.dp_neg_lex (Hu–Liu lists)."
+        pos_seeds, neg_seeds = load_lexicon(self.dp_pos_lex, self.dp_neg_lex)
 
-    def _ensure_labels(self) -> None:
-        """
-        If many reviews lack opinion_units, annotate up to label_limit via OU (in-place).
-        """
-        unlabeled = [r for r in self.reviews if not r.get("opinion_units")]
-        if not unlabeled:
-            return
-        # deterministically pick a capped subset to label
-        to_label = unlabeled[: self.label_limit]
-        ou = OUBaseline(self.args, self.reviews, self.tests)
-        ou.segmentation(to_label)  # expected to inject r["opinion_units"] entries
+        nlp = spacy.load(self.dp_spacy_model, disable=["ner"])
+        nlp.enable_pipe("senter")
 
-    def _build_ratings(self, reviews: List[dict]) -> Tuple[List[List[Any]], List[str], List[float]]:
-        """
-        Build SULM ratings rows + vocab + aspect priors.
-        Row format: [user_id, item_id, overall_binary, s1..sK]
-        """
+        aspect_df = {}
         aspect_counts: Dict[str, int] = {}
-        per_review: List[Tuple[dict, Dict[str, float], float]] = []
+        rows_tmp: List[Tuple[dict, Dict[str, float], float]] = []
 
         for r in reviews:
-            units = r.get("opinion_units") or []
-            if not units:
+            text = str(r.get("text") or "")
+            if not text.strip():
+                continue
+            doc = nlp(text)
+
+            # sentence-level DP then aggregate
+            T_all, O_all = set(), {}
+            for sent in doc.sents:
+                T, O = dp_extract_from_doc(sent.as_doc(), pos_seeds, neg_seeds, max_iters=self.dp_max_iters)
+                T_all |= T
+                O_all.update(O)
+
+            labels = aggregate_review_aspect_labels(doc, T_all, O_all, pos_seeds, neg_seeds, neutral_band=self.neutral_band)
+            if not labels:
                 continue
 
-            agg: Dict[str, List[float]] = {}
-            for u in units:
-                a = (u.get("aspect") or "").strip().lower()
-                s = self._score_from_unit(u)
-                if a:
-                    agg.setdefault(a, []).append(s)
-            if not agg:
-                continue
-
-            a2s = {a: float(np.mean(v)) for a, v in agg.items()}  # [-1,1]
-            for a in a2s:
+            # update counts
+            for a in labels.keys():
                 aspect_counts[a] = aspect_counts.get(a, 0) + 1
 
-            mean_sc = float(np.mean(list(a2s.values())))
-            overall = 1.0 if mean_sc > 0.0 else 0.0
+            overall = self._overall_binary(r, labels)
+            rows_tmp.append((r, labels, overall))
 
-            per_review.append((r, a2s, overall))
-
-        # vocab: top-K by frequency
+        # fix vocab = top-K
         vocab = [a for a, _ in sorted(aspect_counts.items(), key=lambda kv: (-kv[1], kv[0]))][: self.max_vocab]
         a2i = {a: i for i, a in enumerate(vocab)}
 
-        # rows + priors
+        # assemble SULM rows + priors
         rows: List[List[Any]] = []
         col_bins: List[List[float]] = [[] for _ in vocab]
 
-        for r, a2s, overall in per_review:
-            row = [r.get("user_id"), r.get("item_id"), overall]
+        for r, lab, overall in rows_tmp:
+            uid, iid = r.get("user_id"), r.get("item_id")
             vals: List[float] = []
             for a in vocab:
-                if a in a2s:
-                    v = a2s[a]
-                    if v >= self.neutral_band:
-                        b = 1.0
-                    elif v <= -self.neutral_band:
-                        b = 0.0
-                    else:
-                        b = np.nan
-                    vals.append(b)
-                    if not math.isnan(b):
-                        col_bins[a2i[a]].append(b)
-                else:
-                    vals.append(np.nan)
-            rows.append(row + vals)
+                b = lab.get(a, np.nan)
+                vals.append(b)
+                if not (isinstance(b, float) and math.isnan(b)):
+                    col_bins[a2i[a]].append(b)
+            rows.append([uid, iid, overall] + vals)
 
         priors = [float(np.nanmean(np.array(col_bins[j], dtype=float))) if col_bins[j] else 0.5
                   for j in range(len(vocab))]
-
         return rows, vocab, priors
 
-    @staticmethod
-    def _score_from_unit(u: dict) -> float:
-        """
-        Map opinion unit to a numeric score in [-1,1].
-        Prefer 'sentiment_score' if present; else coarse mapping from 'sentiment'.
-        """
-        if "sentiment_score" in u and u["sentiment_score"] is not None:
-            return float(u["sentiment_score"])
-        s = (u.get("sentiment") or "").strip().lower()
-        if s.startswith("pos"):
-            return 1.0
-        if s.startswith("neg"):
-            return -1.0
-        return 0.0
+    # ------------------------- helpers -------------------------
 
-    # ------------------------- prediction helpers -------------------------
-
-    def _predict_base(self, user: str, item: str) -> Tuple[float, np.ndarray]:
-        """
-        Call SULM.predict; return rating prob (0..1) and per-aspect probs (np.array).
-        """
+    def _predict_base(self, user: str, item: str) -> Tuple[float, List[float]]:
         assert self.model is not None, "Model not trained/loaded."
-        r_pred, s_preds = self.model.predict(user, item)
-        return float(r_pred), np.asarray(s_preds, dtype=float)
+        r_prob, s_probs = self.model.predict(user, item)
+        return float(r_prob), list(map(float, s_probs))
 
-    def _encode_vocab(self) -> None:
-        """
-        Precompute embeddings for vocab (unit-norm).
-        """
-        self.vocab_embeds = self.encoder.encode(self.vocab, convert_to_tensor=True, normalize_embeddings=True)
-
-    def _aspect_to_index(self, name: str) -> int | None:
-        """
-        Exact/LC match → nearest neighbor via MiniLM (cosine) → None.
-        """
+    def _lookup_index(self, name: str) -> int | None:
         a = (name or "").strip()
         if a in self.a2i:
             return self.a2i[a]
         a_low = a.lower()
         if a_low in self.a2i:
             return self.a2i[a_low]
-        if not self.vocab:
-            return None
-
-        q = self.encoder.encode([a_low], convert_to_tensor=True, normalize_embeddings=True)
-        sims = (q @ self.vocab_embeds.T).squeeze(0)  # cosine because normalized
-        j = int(torch.argmax(sims).item())
-        if float(sims[j]) >= self.map_threshold:
-            return j
         return None
+
+    def _overall_binary(self, r: dict, a2s: Dict[str, float]) -> float:
+        # 1) explicit overall_binary
+        if "overall_binary" in r and r["overall_binary"] in (0,1):
+            return float(r["overall_binary"])
+        # 2) stars (0..5)
+        for k in ("stars", "overall", "rating"):
+            if k in r and r[k] is not None:
+                try:
+                    v = float(r[k])
+                    if 0.0 <= v <= 5.0:
+                        return 1.0 if v >= self.overall_threshold else 0.0
+                    return 1.0 if v > 0.0 else 0.0
+                except Exception:
+                    pass
+        # 3) fallback: mean sign of aspect labels
+        vals = [(+1 if v == 1.0 else (-1 if v == 0.0 else 0)) for v in a2s.values()]
+        return 1.0 if (np.mean(vals) if vals else 0.0) > 0 else 0.0

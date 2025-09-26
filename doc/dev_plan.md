@@ -2,7 +2,7 @@
 
 ## 1. Data Ingestion and Graph Backbone
 - **Graph schema implementation**: create entities for Segment, Review, User, Item, Category, and Specs; encode edges linking them to preserve lineage and metadata required for applicability/reliability scoring. Prioritize scalable storage (e.g., relational tables with foreign keys or property graph abstraction) and ensure audit-friendly provenance fields.【F:doc/goal.md†L20-L41】
-- **Segmentation pipeline input**: design ingestion jobs to parse raw reviews, attach timestamps, price snapshots, and reviewer statistics so downstream models have the necessary signals.【F:doc/goal.md†L21-L41】【F:doc/goal.md†L74-L92】
+- **Segmentation pipeline input**: design ingestion jobs to parse raw reviews, attach timestamps, price snapshots, and reviewer statistics so downstream models have the necessary signals. Use segment any text model.
 
 ## 2. Review Segmentation and Aspect Labeling
 - **Span extraction service**: build sentence/EDU segmentation plus opinion cue detection using lightweight classifiers; keep hooks for LLM auditing on sampled outputs to mitigate drift.【F:doc/goal.md†L43-L73】
