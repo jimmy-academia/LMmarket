@@ -1,7 +1,7 @@
 from .method import BestSystem, SATBaseline
 from .ou import OUBaseline
 from .sulm import SULMBaseline
-# SATClusterBaseline, OUClusterBaseline
+from .sat import SATBaseline
 
 def build_system(args, reviews, tests):
     if args.system == 'best':
