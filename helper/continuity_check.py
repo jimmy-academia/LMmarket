@@ -20,7 +20,7 @@ def review_id(review):
     return None
 
 
-def normalize_for_fuzzy(s: str) -> str:
+def normalize_for_fuzzy(s):
     """
     Lightweight normalization for fuzzy matching:
       - Unicode NFKC
@@ -33,7 +33,7 @@ def normalize_for_fuzzy(s: str) -> str:
     return s.strip()
 
 
-def fuzzy_contains(text: str, excerpt: str, rel=FUZZY_MAX_REL_ERR, abs_err=FUZZY_MAX_ABS_ERR):
+def fuzzy_contains(text, excerpt, rel=FUZZY_MAX_REL_ERR, abs_err=FUZZY_MAX_ABS_ERR):
     """
     Damerau-Levenshtein (optimal string alignment) approximate *substring* match.
     Returns (start_norm, end_norm, distance) over the *normalized* text if within threshold,

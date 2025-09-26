@@ -15,7 +15,7 @@ from sklearn.metrics.pairwise import cosine_similarity as _csim
 from utils import clean_phrase as _clean
 from llm import query_llm
 
-def _node_embed_text(name: str, description: str) -> str:
+def _node_embed_text(name, description):
     """Stronger embedding signal: name + description."""
     name = (name or "").strip()
     desc = (description or "").strip()
@@ -33,12 +33,12 @@ class OntologyNode:
 class Ontology:
     def __init__(
         self,
-        batch_threshold: int = 10,
-        max_depth: int = 4,
-        edit_path: Path = Path("cache/ontology_edit.txt"),
-        backup_json: Path = Path("cache/ontology_backup.json"),
-        pause_message: str = "\n>>> Edit cache/ontology_edit.txt (add '(alias: target)' to lines as needed), save, then press Enter...",
-        review_log_path: Optional[Path] = None
+        batch_threshold = 10,
+        max_depth = 4,
+        edit_path = Path("cache/ontology_edit.txt"),
+        backup_json = Path("cache/ontology_backup.json"),
+        pause_message = "\n>>> Edit cache/ontology_edit.txt (add '(alias: target)' to lines as needed), save, then press Enter...",
+        review_log_path = None
     ):
         self.MAX_DEPTH = max_depth
         self.batch_threshold = batch_threshold
@@ -73,7 +73,7 @@ class Ontology:
         self._embed_model = SentenceTransformer("BAAI/bge-small-en")
         self._emb_cache: Dict[str, np.ndarray] = {}  # node_name -> normalized vector
 
-    def _find_main_node(self, name: str) -> Optional[str]:
+    def _find_main_node(self, name):
         """Find the main node name for a given feature (either direct node or alias)."""
         # 1) Direct node match
         if name in self.nodes:
@@ -86,7 +86,7 @@ class Ontology:
         
         return None
 
-    def add_or_update_node(self, review_id: str, phrase: str, description: str, score: float) -> bool:
+    def add_or_update_node(self, review_id, phrase, description, score):
         """
         Exact-match add/update with simple human-in-the-loop once threshold is hit.
         - If `phrase` matches an existing node name exactly → record the hit; return False.
@@ -140,7 +140,7 @@ class Ontology:
         # If you want accuracy, you can track changes inside _apply_edit_file and return accordingly.
         return name in self.nodes
 
-    def get_node_depth(self, name: str) -> int:
+    def get_node_depth(self, name):
         """Calculates the depth of a node (root is 0)."""
         depth = 0
         # Ensure the starting node exists in the ontology
@@ -156,7 +156,7 @@ class Ontology:
                 return -2 # Indicates a potential cycle or excessive depth
         return depth
 
-    def add_node(self, name: str, description: str = "", parent_name: Optional[str] = None) -> bool:
+    def add_node(self, name, description="", parent_name=None):
         """
         Adds a new node to the ontology, optionally as a child of another node.
         If the node already exists, it does nothing.
@@ -196,7 +196,7 @@ class Ontology:
     # ---------------------------
     # Minimal helpers to support the flow
     # ---------------------------
-    def save(self, path: Path) -> None:
+    def save(self, path):
         data = {
             name: {
                 "description": n.description,
@@ -208,7 +208,7 @@ class Ontology:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    def __str__(self, node: OntologyNode=None, print_depth: int=None) -> str:
+    def __str__(self, node=None, print_depth=None):
         # simple tree print (no re-parenting logic here)
         if node is None:
             roots = [n for n in self.nodes.values() if n.parent is None]
@@ -217,7 +217,7 @@ class Ontology:
             roots = [node]
 
         out: List[str] = []
-        def dfs(name: str, d: int):
+        def dfs(name, d):
             if print_depth is not None and d >= print_depth or d >= self.MAX_DEPTH - 1:
                 return
             out.append("\t"*d + name)
@@ -233,7 +233,7 @@ class Ontology:
         return "\n".join(out)
 
     # --- recommendation (very light-weight, name similarity only) ---
-    def _recommend(self, feat: str, top_k: int = 3, feat_desc: str = "") -> List[Tuple[float, str]]:
+    def _recommend(self, feat, top_k=3, feat_desc=""):
         """
         Embedding-based nearest neighbors over existing node (name+description).
         Returns [(score, node_name)] sorted desc by cosine similarity.
@@ -262,7 +262,7 @@ class Ontology:
 
 
     # --- write edit file ---
-    def _write_edit_file_with_recommendations(self) -> None:
+    def _write_edit_file_with_recommendations(self):
         """
         Top block lines:
             <new_feature>\t<new_feature_description>
@@ -289,7 +289,7 @@ class Ontology:
         roots = [n for n in self.nodes.values() if n.parent is None]
         roots = sorted(roots, key=lambda x: x.name)
 
-        def dfs(name: str, d: int):
+        def dfs(name, d):
             if d >= self.MAX_DEPTH - 1:
                 return
             lines.append("\t"*d + name)
@@ -307,7 +307,7 @@ class Ontology:
         self.edit_path.parent.mkdir(parents=True, exist_ok=True)
         self.edit_path.write_text("\n".join(lines), encoding="utf-8")
 
-    def _apply_edit_file(self) -> None:
+    def _apply_edit_file(self):
         """
         Reads BOTH the top block and bottom block.
         - If '===' is present: top is new-features TSV; bottom is the structure.
@@ -383,7 +383,7 @@ class Ontology:
 
         # ---- Parse STRUCTURE block and rebuild the tree ----
         # Helper to expand tree text into (depth, name) items.
-        def _parse_tree_block(tree_str: str) -> list[tuple[int, str]]:
+        def _parse_tree_block(tree_str):
             lines = [ln.rstrip("\r\n") for ln in tree_str.splitlines() if ln.strip()]
             parsed: list[tuple[int, str]] = []
             for ln in lines:
@@ -404,7 +404,7 @@ class Ontology:
         self.nodes = OrderedDict()
         stack: list[tuple[int, str]] = []  # (depth, name)
 
-        def _desc_for(name: str) -> str:
+        def _desc_for(name):
             # prefer existing description, then top-block desc, else empty
             if name in old_nodes and old_nodes[name].description:
                 return old_nodes[name].description
@@ -413,7 +413,7 @@ class Ontology:
             return ""
 
         # Ensure node factory
-        def _ensure_node(name: str):
+        def _ensure_node(name):
             if name not in self.nodes:
                 node = OntologyNode(name=name, description=_desc_for(name))
                 # Preserve aliases from old nodes
@@ -600,7 +600,7 @@ Provide your decision in ONE format with no extra text:
                 if not self.nodes[name].description and desc:
                     self.nodes[name].description = desc
 
-    def flush_pending_features(self) -> None:
+    def flush_pending_features(self):
         # Log the number of reviews processed for this batch
         reviews_for_this_batch = len(self._processed_reviews_in_session)
         if reviews_for_this_batch > 0:

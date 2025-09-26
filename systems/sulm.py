@@ -639,14 +639,14 @@ JJ = {"ADJ"}
 NN = {"NOUN", "PROPN"}
 PRON_TARGETS = {"it", "they"}
 
-def load_lexicon(path_pos: str, path_neg: str) -> Tuple[set, set]:
+def load_lexicon(path_pos, path_neg):
     pos = {w.strip().lower() for w in Path(path_pos).read_text(encoding="utf-8", errors="ignore").splitlines()
            if w and not w.startswith(";")}
     neg = {w.strip().lower() for w in Path(path_neg).read_text(encoding="utf-8", errors="ignore").splitlines()
            if w and not w.startswith(";")}
     return pos, neg
 
-def is_negated(tok) -> bool:
+def is_negated(tok):
     return any(c.dep_ == "neg" for c in tok.children) or tok.dep_ == "neg" or any(a.dep_ == "neg" for a in tok.ancestors)
 
 def normalize_aspect(tok):
@@ -662,7 +662,7 @@ def adjective_form(tok):
         return tok.lemma_.lower()
     return None
 
-def dp_extract_from_doc(doc, seeds_pos: set, seeds_neg: set, max_iters: int = 5) -> Tuple[set, Dict[str, int]]:
+def dp_extract_from_doc(doc, seeds_pos, seeds_neg, max_iters=5):
     """Return (targets, opinions{word->+1/-1}) using DP rules R11–R42 mapped to UD."""
     O: Dict[str, int] = {}
     T: set = set()
@@ -675,7 +675,7 @@ def dp_extract_from_doc(doc, seeds_pos: set, seeds_neg: set, max_iters: int = 5)
         if w in seeds_pos: O[w] = +1
         elif w in seeds_neg: O[w] = -1
 
-    def adopt(word: str, ori: int) -> bool:
+    def adopt(word, ori):
         if word not in O:
             O[word] = ori
             return True
@@ -770,8 +770,8 @@ def dp_extract_from_doc(doc, seeds_pos: set, seeds_neg: set, max_iters: int = 5)
     T = {t for t in T if t not in PRON_TARGETS}
     return T, O
 
-def aggregate_review_aspect_labels(doc, targets: set, opinions: Dict[str,int],
-                                   pos_seeds: set, neg_seeds: set, neutral_band=0.33) -> Dict[str, float]:
+def aggregate_review_aspect_labels(doc, targets, opinions,
+                                   pos_seeds, neg_seeds, neutral_band=0.33):
     """Return {aspect -> {1,0,NaN}} via sentiment ratio over local opinion links."""
     counts = {a: {"pos": 0, "neg": 0} for a in targets}
     seedset = set(opinions.keys()) | pos_seeds | neg_seeds
@@ -868,7 +868,7 @@ class SULMBaseline(BaseSystem):
 
     # ------------------------- API -------------------------
 
-    def predict_given_aspects(self, user_id: str, item_id: str, aspects: List[str]) -> List[float]:
+    def predict_given_aspects(self, user_id, item_id, aspects):
         r_prob, s_probs = self._predict_base(user_id, item_id)
         if len(s_probs) == len(self.vocab) + 1:
             s_probs = s_probs[:-1]
@@ -886,13 +886,13 @@ class SULMBaseline(BaseSystem):
 
     # ------------------------- train/load -------------------------
 
-    def _bundle_ready(self) -> bool:
+    def _bundle_ready(self):
         if not self.meta_path.exists():
             return False
         shards = ["mu", "av_sent", "z", "user_profiles", "item_profiles"]
         return all(Path(str(self.model_prefix) + s).exists() for s in shards)
 
-    def _load_or_train(self) -> None:
+    def _load_or_train(self):
         if self._bundle_ready():
             meta = json.load(open(self.meta_path))
             self.vocab = list(meta["vocab"])
@@ -960,7 +960,7 @@ class SULMBaseline(BaseSystem):
 
     # ------------------------- DP → ratings -------------------------
 
-    def _build_ratings_with_dp(self, reviews: List[dict]) -> Tuple[List[List[Any]], List[str], List[float]]:
+    def _build_ratings_with_dp(self, reviews):
         assert self.dp_pos_lex and self.dp_neg_lex, "Set args.dp_pos_lex and args.dp_neg_lex (Hu–Liu lists)."
         pos_seeds, neg_seeds = load_lexicon(self.dp_pos_lex, self.dp_neg_lex)
 
@@ -1019,12 +1019,12 @@ class SULMBaseline(BaseSystem):
 
     # ------------------------- helpers -------------------------
 
-    def _predict_base(self, user: str, item: str) -> Tuple[float, List[float]]:
+    def _predict_base(self, user, item):
         assert self.model is not None, "Model not trained/loaded."
         r_prob, s_probs = self.model.predict(user, item)
         return float(r_prob), list(map(float, s_probs))
 
-    def _lookup_index(self, name: str) -> int | None:
+    def _lookup_index(self, name):
         a = (name or "").strip()
         if a in self.a2i:
             return self.a2i[a]
@@ -1033,7 +1033,7 @@ class SULMBaseline(BaseSystem):
             return self.a2i[a_low]
         return None
 
-    def _overall_binary(self, r: dict, a2s: Dict[str, float]) -> float:
+    def _overall_binary(self, r, a2s):
         # 1) explicit overall_binary
         if "overall_binary" in r and r["overall_binary"] in (0,1):
             return float(r["overall_binary"])

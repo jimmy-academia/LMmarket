@@ -16,7 +16,7 @@ class Config:
 
 # -------------- Experiment --------------
 
-def run_reproducibility_experiment(embedder, info_by_id, cfg: Config = Config()):
+def run_reproducibility_experiment(embedder, info_by_id, cfg=Config()):
     vecs, index, chunk_infos = (
         embedder.vecs,
         embedder.index,

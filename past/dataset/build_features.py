@@ -26,13 +26,13 @@ ppause = partial(pause_if, flag=PAUSE)
 
 embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
-def embed(text: str) -> np.ndarray:
+def embed(text):
     return embed_model.encode(text, normalize_embeddings=True)
 
 def cosine(a, b):
     return float(csim(a.reshape(1, -1), b.reshape(1, -1))[0][0])
 
-def clean_phrase(phrase: str) -> str:
+def clean_phrase(phrase):
     return phrase.lower().strip("* ").split(". ")[-1].strip()
 
 ### --- Ontology Node and Ontology Structure --- ###
@@ -52,7 +52,7 @@ class OntologyNode:
             if type_ == "USER": self.user2score[id] = {'scores': [], 'avg': -100}
             if type_ == "ITEM": self.item2score[id] = {'scores': [], 'avg': -100}
 
-    def update(self, alias: str):
+    def update(self, alias):
         self.aliases.add(alias)
 
     def __repr__(self):
@@ -101,7 +101,7 @@ class Ontology:
         else:
             vlog("add_or_update_node: unkown type")
 
-    def add_or_update_node(self, review_id, type_, id, phrase, description, score) -> bool:
+    def add_or_update_node(self, review_id, type_, id, phrase, description, score):
         """
         回傳 True = 新增了一個 node (包括 CHILD / PARENT 分支)，
         False = 只是加了 alias 或回傳到既有 node。
@@ -185,7 +185,7 @@ Decide the best relationship for the new feature and follow the output format:
             for iid in node.item2score:
                 if node.item2score[iid]['scores']: node.item2score[iid]['avg'] = statistics.mean(node.item2score[iid]['scores'])
 
-    def save_json(self, path: Path):
+    def save_json(self, path):
         json_dict = {
             name: {
                 "name": n.name,
@@ -200,7 +200,7 @@ Decide the best relationship for the new feature and follow the output format:
         with open(path, "w") as f:
             json.dump(json_dict, f, indent=2)
     
-    def save_txt(self, path: Path):
+    def save_txt(self, path):
         json_dict = {
             name: {
                 "name": n.name,
@@ -223,7 +223,7 @@ Decide the best relationship for the new feature and follow the output format:
 
         lines = []
 
-        def dfs(node_id: str, depth: int, stack: set):
+        def dfs(node_id, depth, stack):
             if node_id in stack:
                 lines.append("\t"*depth + f"{json_dict[node_id].get('name', node_id)} (cycle detected)")
                 return
@@ -241,7 +241,7 @@ Decide the best relationship for the new feature and follow the output format:
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
 
-    def read_txt(self, path: Path) -> bool:
+    def read_txt(self, path):
         try:
             text = Path(path).read_text(encoding="utf-8")
         except Exception as e:
@@ -252,7 +252,7 @@ Decide the best relationship for the new feature and follow the output format:
         parsed = []
         line_no = 0
 
-        def split_remove_flag(name: str) -> Tuple[str, bool]:
+        def split_remove_flag(name):
             s = name.strip()
             low = s.lower()
             if low.endswith("(remove)"):
@@ -393,7 +393,7 @@ Decide the best relationship for the new feature and follow the output format:
 
         return True
 
-def extract_feature_mentions(text: str, ontology: Ontology = None, dset = None, model="openai") -> List[Tuple[str, str, float]]:
+def extract_feature_mentions(text, ontology=None, dset=None, model="openai"):
     hint_str = ', '.join(ontology.feature_hints(text)) if ontology else []
 
     if dset == 'yelp':
@@ -441,7 +441,7 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def human_in_the_loop_update(new_since_refine: int, new_features: List[str], ontology: Ontology = None) -> None:
+def human_in_the_loop_update(new_since_refine, new_features, ontology=None):
     ontology.save_txt(Path("cache/ontology_human_in_the_loop.txt"))
     print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology 進行微調，完成後按 Enter 繼續...")
     input()
@@ -452,7 +452,7 @@ def human_in_the_loop_update(new_since_refine: int, new_features: List[str], ont
         valid = ontology.read_txt(Path("cache/ontology_human_in_the_loop.txt"))
 
 ### --- Main Ontology Building Function --- ###
-def build_ontology_by_reviews(args, review_type_id_pairs: List[Tuple[Dict, str, str]], K: int = 10) -> Ontology:
+def build_ontology_by_reviews(args, review_type_id_pairs, K=10):
     review_cnt = len(review_type_id_pairs)
 
     node_cnt = []

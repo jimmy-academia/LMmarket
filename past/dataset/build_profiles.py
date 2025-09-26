@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 from utils import loadj, dumpj
 
-def load_data(data_dir: Path):
+def load_data(data_dir):
     """Load all required JSON files"""
     print("Loading data...")
     yelp_data = loadj(data_dir / "yelp_data.json")

@@ -46,7 +46,7 @@ PRICING_PER_TOKEN = {
     "gpt-4-turbo":  {"in": 10.00/1_000_000,"out": 30.00/1_000_000},
 }
 
-def _resolve_rates(model: str):
+def _resolve_rates(model):
     m = model.lower()
     if m in PRICING_PER_TOKEN:
         return PRICING_PER_TOKEN[m]
@@ -56,7 +56,7 @@ def _resolve_rates(model: str):
             return PRICING_PER_TOKEN[k]
     return None
 
-def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+def _estimate_cost_usd(model, prompt_tokens, completion_tokens):
     rates = _resolve_rates(model)
     if not rates:
         return 0.0

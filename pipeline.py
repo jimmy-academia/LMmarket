@@ -11,13 +11,13 @@ import numpy as np
 _GLOBAL_RNG = np.random.default_rng(42)
 
 
-def set_random_seed(seed: int | None) -> None:
+def set_random_seed(seed):
     """Seed the shared RNG used across PROCESS helpers."""
     global _GLOBAL_RNG
     _GLOBAL_RNG = np.random.default_rng(int(seed) if seed is not None else 42)
 
 
-def prepare_basic(args) -> dict:
+def prepare_basic(args):
     """STEP-1 = PREPARE: extract Yelp data and derive geo priors."""
     if args.dset != 'yelp':
         raise ValueError('prepare_basic currently supports the Yelp dataset only.')
@@ -130,7 +130,7 @@ def prepare_basic(args) -> dict:
     return prep
 
 
-def process_build(args, prep: dict) -> dict:
+def process_build(args, prep):
     """STEP-2 = PROCESS: segmentation, embeddings, clustering, sentiment."""
     if args.seg_model != 'sat':
         raise ValueError('Only SaT segmentation is implemented for now.')
@@ -162,7 +162,7 @@ def process_build(args, prep: dict) -> dict:
     return proc
 
 
-def segment_with_sat(prep: dict) -> list:
+def segment_with_sat(prep):
     """Segment review text with a SaT-style sentence splitter."""
     segments = []
     info = prep.get('INFO', {})
@@ -191,7 +191,7 @@ def segment_with_sat(prep: dict) -> list:
     return segments
 
 
-def embed_segments(segs: list, model: str) -> dict:
+def embed_segments(segs, model):
     """Create deterministic embeddings for segments."""
     dims = {
         'gte-large': 1024,
@@ -214,7 +214,7 @@ def embed_segments(segs: list, model: str) -> dict:
     return embeddings
 
 
-def cluster(embs: dict, algo: str) -> dict:
+def cluster(embs, algo):
     """Cluster embeddings into aspect buckets."""
     unit_ids = list(embs.keys())
     if not unit_ids:
@@ -232,7 +232,7 @@ def cluster(embs: dict, algo: str) -> dict:
     return aspects
 
 
-def absa_score(segs: list, model: str) -> dict:
+def absa_score(segs, model):
     """Score aspect sentiment with a lightweight lexicon stub."""
     if model != 'pyabsa-restaurants':
         raise ValueError(f'Unsupported absa_model: {model}')
@@ -248,7 +248,7 @@ def absa_score(segs: list, model: str) -> dict:
     return scores
 
 
-def aggregate_item_aspects(segs: list, aspects: dict, sent: dict, topk: int) -> dict:
+def aggregate_item_aspects(segs, aspects, sent, topk):
     """Aggregate per-item aspect sentiment with trimmed means."""
     per_item = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for seg in segs:
@@ -282,7 +282,7 @@ def aggregate_item_aspects(segs: list, aspects: dict, sent: dict, topk: int) -> 
     return result
 
 
-def pack(segs: list, aspects: dict, sent: dict) -> list:
+def pack(segs, aspects, sent):
     """Merge segment metadata, aspect ids, and sentiment."""
     packed = []
     for seg in segs:
@@ -305,7 +305,7 @@ def pack(segs: list, aspects: dict, sent: dict) -> list:
     return packed
 
 
-def label_aspects(segs: list, aspects: dict) -> dict:
+def label_aspects(segs, aspects):
     """Generate lightweight aspect labels using token frequency."""
     bags = defaultdict(lambda: defaultdict(int))
     for seg in segs:
@@ -322,7 +322,7 @@ def label_aspects(segs: list, aspects: dict) -> dict:
     return labels
 
 
-def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+def haversine_km(lon1, lat1, lon2, lat2):
     """Compute haversine distance in kilometers."""
     r = 6371.0
     lon1_rad = math.radians(lon1)
@@ -336,12 +336,12 @@ def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     return r * c
 
 
-def coord_median(lons: list, lats: list) -> list:
+def coord_median(lons, lats):
     """Return the coordinate-wise median."""
     return [float(median(lons)), float(median(lats))]
 
 
-def normalize_price(raw) -> int | None:
+def normalize_price(raw):
     """Normalize Yelp price information to integers 1-4 or None."""
     if raw is None:
         return None
@@ -374,7 +374,7 @@ def normalize_price(raw) -> int | None:
     return None
 
 
-def normalize_hours(hours) -> dict:
+def normalize_hours(hours):
     """Normalize Yelp hours into a compact dict."""
     if not hours:
         return {}
@@ -393,7 +393,7 @@ def normalize_hours(hours) -> dict:
     return normalized
 
 
-def parse_categories(raw) -> list:
+def parse_categories(raw):
     """Parse category strings into a list of normalized tokens."""
     if not raw:
         return []
@@ -404,13 +404,13 @@ def parse_categories(raw) -> list:
     return [entry.strip().lower() for entry in entries if entry.strip()]
 
 
-def _ensure_coords(lon, lat) -> list:
+def _ensure_coords(lon, lat):
     if lon is None or lat is None:
         return [None, None]
     return [float(lon), float(lat)]
 
 
-def _kmeans_labels(matrix: np.ndarray) -> np.ndarray:
+def _kmeans_labels(matrix):
     n_samples, dim = matrix.shape
     k = max(1, min(int(math.sqrt(n_samples)) or 1, 32))
     indices = _GLOBAL_RNG.choice(n_samples, size=k, replace=False)
@@ -425,7 +425,7 @@ def _kmeans_labels(matrix: np.ndarray) -> np.ndarray:
     return assign
 
 
-def _density_labels(matrix: np.ndarray) -> np.ndarray:
+def _density_labels(matrix):
     n_samples = matrix.shape[0]
     labels = np.zeros(n_samples, dtype=int)
     radius = np.median(np.linalg.norm(matrix - matrix.mean(axis=0), axis=1))

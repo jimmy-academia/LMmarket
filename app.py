@@ -6,7 +6,7 @@ from collections import defaultdict
 from pipeline import haversine_km
 
 
-def build_item_coordinates(proc: dict) -> dict:
+def build_item_coordinates(proc):
     """Collect item coordinates from rich review units."""
     coords = defaultdict(dict)
     for unit in proc.get('RICH_REVIEWS', []):
@@ -18,7 +18,7 @@ def build_item_coordinates(proc: dict) -> dict:
     return coords
 
 
-def compute_utility(proc: dict, query=None) -> dict:
+def compute_utility(proc, query=None):
     """Compute utility scores for each user-item pair given PROC artifacts."""
     user_geo = proc.get('USER_GEO', {})
     item_perf = proc.get('ITEM_ASPECT_PERF', {})
@@ -47,7 +47,7 @@ def compute_utility(proc: dict, query=None) -> dict:
     return utilities
 
 
-def apps_run(args, proc: dict) -> dict:
+def apps_run(args, proc):
     """Example STEP-3 runner returning utility grids."""
     utilities = compute_utility(proc)
     summary = {

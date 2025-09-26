@@ -130,7 +130,7 @@ def build_index(vecs, index_type = 'flatip'):
 
 import re
 
-def _smart_wrap_sentence(s: str, max_chars: int):
+def _smart_wrap_sentence(s, max_chars):
     """
     Split a single (possibly very long) sentence into chunks <= max_chars.
     Prefer strong punctuation, then weak punctuation/space, else hard cut.

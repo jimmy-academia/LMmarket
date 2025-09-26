@@ -26,13 +26,13 @@ ppause = partial(pause_if, flag=PAUSE)
 
 embed_model = SentenceTransformer("BAAI/bge-small-en")
 
-def embed(text: str) -> np.ndarray:
+def embed(text):
     return embed_model.encode(text, normalize_embeddings=True)
 
 def cosine(a, b):
     return float(csim(a.reshape(1, -1), b.reshape(1, -1))[0][0])
 
-def clean_phrase(phrase: str) -> str:
+def clean_phrase(phrase):
     return phrase.lower().strip("* ").split(". ")[-1].strip().replace("*", "").strip().replace(" ", "_")
 
 ### --- Ontology Node and Ontology Structure --- ###
@@ -47,7 +47,7 @@ class OntologyNode:
         self.children = {}
         self.parent = None
 
-    def update(self, alias: str):
+    def update(self, alias):
         self.aliases.add(alias)
 
     def __repr__(self):
@@ -84,7 +84,7 @@ class Ontology:
         scored.sort(reverse=True, key=lambda x: x[0])
         return [node for node in scored[:top_k]]
 
-    def get_node_depth(self, node: OntologyNode) -> int:
+    def get_node_depth(self, node):
         depth = 0
         current = node 
         while current.parent is not None:
@@ -93,9 +93,9 @@ class Ontology:
             current = current.parent
         return depth
     
-    def root_max_depth(self, root: OntologyNode) -> int:
+    def root_max_depth(self, root):
         """回傳以 root 為根的子樹，其所有節點(以整棵樹根為基準)深度的最大值。"""
-        def dfs(n: OntologyNode) -> int:
+        def dfs(n):
             cur = self.get_node_depth(n)
             if not n.children:
                 return cur
@@ -107,7 +107,7 @@ class Ontology:
             node = node.parent
         return node
 
-    def added_as_root(self, new_id: str, review_id: str, score: float, description: str) -> bool:
+    def added_as_root(self, new_id, review_id, score, description):
         """
         新增一個全新的 ROOT node。
         """
@@ -120,7 +120,7 @@ class Ontology:
         self.review2node_id_score[review_id].append((new_id, score))
         vlog(f"'{new_id}' added as ROOT node")
 
-    def added_as_alias(self, target: str, alias: str, review_id: str, score: float) -> bool:
+    def added_as_alias(self, target, alias, review_id, score):
         """
         將一個 alias 加入到已存在的 node 中。
         """
@@ -131,7 +131,7 @@ class Ontology:
         vlog(f"'{alias}' added as ALIAS to '{target}'")
         return False
 
-    def added_as_child(self, parent: str, new_id: str, review_id: str, score: float, description: str) -> bool:
+    def added_as_child(self, parent, new_id, review_id, score, description):
         """
         將 new_id 設為 parent node 的 child。
         """
@@ -155,7 +155,7 @@ class Ontology:
         vlog(f"'{new_id}' added as CHILD to '{parent}'")
         return True
 
-    def added_as_parent(self, new_id: str, child: str, review_id: str, score: float, description: str) -> bool:
+    def added_as_parent(self, new_id, child, review_id, score, description):
         """
         將 new_id 設為 child node 的 parent。
         """
@@ -179,7 +179,7 @@ class Ontology:
         vlog(f"'{new_id}' added as PARENT to '{child}'")
         return True
 
-    def add_or_update_node(self, review_id, phrase, description, score) -> bool:
+    def add_or_update_node(self, review_id, phrase, description, score):
         """
         回傳 True = 新增了一個 node (包括 CHILD / PARENT 分支)，
         False = 只是加了 alias 或回傳到既有 node。
@@ -232,7 +232,7 @@ Only return the decision, no explanations or extra text.
         #self.review2node_id_score[review_id].append((node_id, score))
         #return True
 
-    def save_json(self, path: Path):
+    def save_json(self, path):
         json_dict = {
             name: {
                 "name": n.name,
@@ -245,7 +245,7 @@ Only return the decision, no explanations or extra text.
         with open(path, "w") as f:
             json.dump(json_dict, f, indent=2)
     
-    def save_txt(self, path: Path, new_features: List[str] = None):
+    def save_txt(self, path, new_features=None):
         json_dict = {
             name: {
                 "name": n.name,
@@ -268,20 +268,20 @@ Only return the decision, no explanations or extra text.
 
         lines = []
 
-        def get_all_children(node_id: str) -> list:
+        def get_all_children(node_id):
             """取得某個節點的所有子節點名稱"""
             if node_id not in json_dict:
                 return []
             return json_dict[node_id].get("children", [])
 
-        def add_node_to_lines(node_id: str):
+        def add_node_to_lines(node_id):
             """將節點加入輸出列表，處理新特徵標記"""
             node_name = json_dict[node_id]["name"]
             if new_features and node_name in new_features:
                 return f"{node_name}*"
             return node_name
 
-        def dfs(node_id: str, depth: int, visited: set):
+        def dfs(node_id, depth, visited):
             if node_id in visited:
                 lines.append("\t"*depth + f"{json_dict[node_id]['name']} (cycle detected)")
                 return
@@ -315,7 +315,7 @@ Only return the decision, no explanations or extra text.
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
 
-    def read_txt(self, path: Path) -> bool:
+    def read_txt(self, path):
         try:
             text = Path(path).read_text(encoding="utf-8")
         except Exception as e:
@@ -326,7 +326,7 @@ Only return the decision, no explanations or extra text.
         parsed = []
         line_no = 0
 
-        def split_flags(name: str) -> Tuple[str, bool, Optional[str]]:
+        def split_flags(name):
             s = name.strip()
             low = s.lower()
             # remove
@@ -516,7 +516,7 @@ Only return the decision, no explanations or extra text.
             node.parent = None
             node.children.clear()
 
-        def _m(name: Optional[str]) -> Optional[str]:
+        def _m(name):
             if name is None:
                 return None
             return rename_map.get(name, name)
@@ -547,7 +547,7 @@ Only return the decision, no explanations or extra text.
 
         return True
 
-def extract_feature_mentions(text: str, ontology: Ontology = None, dset = None, model="openai") -> List[Tuple[str, float]]:
+def extract_feature_mentions(text, ontology=None, dset=None, model="openai"):
     hint_str = ', '.join(ontology.feature_hints(text)) if ontology else []
 
     if dset == 'yelp':
@@ -595,7 +595,7 @@ feature name | definition | score (float between -1.0 and 1.0)
                 continue
     return results
 
-def human_in_the_loop_update(new_since_refine: int, new_features: List[str], update_cnt: int, ontology: Ontology = None) -> None:
+def human_in_the_loop_update(new_since_refine, new_features, update_cnt, ontology=None):
     ontology.save_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"), new_features)
     print(f"\n>>> 已新增 {new_since_refine} 個新 feature：{new_features}\n>>> 請打開 Ontology {update_cnt} 進行微調（標記 * 為新增 feature），完成後按 Enter 繼續...")
     input()
@@ -606,7 +606,7 @@ def human_in_the_loop_update(new_since_refine: int, new_features: List[str], upd
         valid = ontology.read_txt(Path(f"cache/ontology_human_in_the_loop_{update_cnt}.txt"))
 
 ### --- Main Ontology Building Function --- ###
-def build_ontology_by_reviews(args, reviews: List[Dict], K: int = 10) -> Ontology:
+def build_ontology_by_reviews(args, reviews, K=10):
     review_cnt = len(reviews)
 
     node_cnt = []

@@ -30,7 +30,7 @@ def embed_texts(texts, model_name, batch_size, normalize=True):
     return embs.cpu().numpy().astype("float32")
 
 
-def main(cfg: Config = Config()):
+def main(cfg=Config()):
     # --- Define comments ---
     comments = {
         "good_fry": [

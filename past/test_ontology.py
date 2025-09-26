@@ -2,7 +2,7 @@ from dataset.ontology import Ontology, OntologyNode, clean_phrase
 from pathlib import Path
 import pytest
 
-def _write_lines(path: Path, lines):
+def _write_lines(path, lines):
     with open(path, "w", encoding="utf-8") as f:
         for ln in lines:
             f.write(ln + "\n")
@@ -149,7 +149,7 @@ def test_remove_functionality():
 
 
 
-def _build_base_tree(o: Ontology):
+def _build_base_tree(o):
     """
     建立基礎節點並寫入一份「合法層級」TXT（深度<=3）：
     service quality

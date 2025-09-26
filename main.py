@@ -7,7 +7,7 @@ from utils import load_or_build, readf, dumpj, loadj
 from pipeline import prepare_basic, process_build
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', default='yelp')
     parser.add_argument('--cache_dir', default='cache')

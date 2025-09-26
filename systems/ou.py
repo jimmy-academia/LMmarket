@@ -74,10 +74,10 @@ class OUBaseline(BaseSystem):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = SentenceTransformer(model_name, device=device)
 
-    def _make_prompt(self, doc_text: str) -> str:
+    def _make_prompt(self, doc_text):
         return self.prompt_template.replace("{TEXT}", doc_text)
 
-    def _normalize_unit(self, u: dict) -> dict:
+    def _normalize_unit(self, u):
         aspect = (u.get("aspect") or "").strip()
         sentiment = (u.get("sentiment") or "").strip().lower()
         if sentiment not in {"positive", "negative", "neutral"}:
@@ -122,7 +122,7 @@ class OUBaseline(BaseSystem):
 
     # ---- helper for embedding store (faithful spirit) ----
     @staticmethod
-    def create_query_string(u: dict, include_sentiment: bool = False) -> str:
+    def create_query_string(u, include_sentiment=False):
         """
         Build a string to embed per opinion unit.
         The repo’s flow embeds opinion-unit content for retrieval; two common variants:
