@@ -33,7 +33,6 @@ def main():
     new_todo = """
     1. prepare data
     2. (core) process data => evaluate
-    3. (app) equilibrium task => evaluate
     """
     print(new_todo)
 

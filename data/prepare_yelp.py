@@ -45,7 +45,22 @@ def prepare_yelp_data(dset_root):
 
     info_by_city = build_info_by_city(city_restaurants)
 
-    return {"USERS": user_by_city, "ITEMS": item_by_city, "REVIEWS": entry_by_city, "INFO": info_by_city}
+    cities = set()
+    for mapping in (user_by_city, item_by_city, entry_by_city, info_by_city):
+        cities.update(mapping.keys())
+
+    data = {}
+    for city in cities:
+        data[city] = {
+            "USERS": user_by_city[city] if city in user_by_city else {},
+            "ITEMS": item_by_city[city] if city in item_by_city else {},
+            "REVIEWS": entry_by_city[city] if city in entry_by_city else [],
+            "INFO": info_by_city[city] if city in info_by_city else {},
+        }
+
+    return data
+
+    # return {"USERS": user_by_city, "ITEMS": item_by_city, "REVIEWS": entry_by_city, "INFO": info_by_city}
 
 """
 Module functions
