@@ -1,11 +1,11 @@
-from .process_yelp import process_yelp_data
+from .prepare_yelp import prepare_yelp_data
 from .benchmark_maker import construct_benchmark
 
-def process_data(args):
+def prepare_data(args):
     if args.dset == 'yelp':
-        return process_yelp_data(args.dset_root)
+        return prepare_yelp_data(args.dset_root)
     else:
-        print(f'[foundation/__init__.py] WARNING, process_{args.dset}_data function not implemented.')
+        print(f'[foundation/__init__.py] WARNING, prepare_{args.dset}_data function not implemented.')
 
 ## === deprecate ==
 # def fetch_embedder(args, reviews):

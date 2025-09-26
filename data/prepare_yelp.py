@@ -24,12 +24,12 @@ def iter_line(filepath, total=None):
 Main interface
 """
 
-def process_yelp_data(dset_root):
+def prepare_yelp_data(dset_root):
     dset_root = dset_root / 'yelp'
     business_file = dset_root/"yelp_academic_dataset_business.json" # 150346
     review_file = dset_root/"yelp_academic_dataset_review.json" # 6990280
     tip_file = dset_root/"yelp_academic_dataset_tip.json" # 908915
-    # user_file = dset_root/"yelp_academic_dataset_user.json" # 1987897, # ignore social network for now
+    user_file = dset_root/"yelp_academic_dataset_user.json" # 1987897
 
     restaurants = load_restaurants(business_file)
     city_restaurants = filter_cities(restaurants)

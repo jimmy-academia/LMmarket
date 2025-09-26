@@ -15,7 +15,7 @@ from pathlib import Path
 
 import argparse
 
-from data_foundation import process_data, construct_benchmark
+from data import prepare_data
 from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 
@@ -30,74 +30,20 @@ def main():
     parser.add_argument('--num_test', type=int, default=2)
     args = parser.parse_args()
 
+    new_todo = """
+    1. prepare data
+    2. (core) process data => evaluate
+    3. (app) equilibrium task => evaluate
+    """
+    print(new_todo)
+
     args.cache_dir = Path(args.cache_dir)
     args.dset_root = Path(readf(args.dset_root).strip())
     args.cache_dir.mkdir(exist_ok=True)
-    args.processed_data_path = args.cache_dir/f"processed_{args.dset}_data.json"
+    args.prepared_data_path = args.cache_dir/f"prepared_{args.dset}_data.json"
+    DATA = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
     
-    DATA = load_or_build(args.processed_data_path, dumpj, loadj, process_data, args)
 
-    # for city in DATA['USERS']:
-    #     print(city, len(DATA['USERS'][city]), len(DATA['ITEMS'][city]), len(DATA['REVIEWS'][city]))
-    # input('pause')
-
-    '''
-    philadelphia 1041 2536 512173
-    indianapolis 362 1098 173652
-    new orleans 280 1200 355692
-    nashville 238 1153 233161
-    tampa 304 1255 208616
-    tucson 289 1100 173804
-    reno 220 770 148916
-    saint louis 176 752 125592
-    '''
-    
-    city = 'saint louis'
-    args.div_name = f"{args.dset}_{city.replace(' ', '_')}"
-    args.testdata_path = args.cache_dir/f"test_data_{args.div_name}.json"
-
-    reviews = DATA['REVIEWS'][city]
-
-
-    # tests = load_or_build(args.testdata_path, dumpj, loadj, construct_benchmark, reviews, args.num_test)
-    
-    # todos = """
-    # Now we are at square 1, but we know where we want to go.
-    # 1. Design method. Train model to disect evident unit
-    #     We are now going into the details
-    #         - Found model: TARGER or AMTM
-    #         - LLM label
-    #         - train
-    #         (LLM in the loop guidance)
-    #         1- validate, observe error
-    #         2- random sample confidence score, LLM feedback
-    #         3-> use LLM to create rule or device to retrieve more of a type of error??
-    #         https://chatgpt.com/c/68cb3dbb-1c48-832f-8612-feb69e72e99b
-    # 2. Baseline method.   
-
-    # Pipeline approach (proposed and baseline):
-    #     -> review to exerpts segment
-    #     -> cluster and retrieval model
-    #     -> utility model
-    # End-to-end approach (baseline): eg sparse, dense, 
-    # """
-    # print(todos)
-    # args.rich_rev_dir = args.cache_dir/'rich_review'
-    # args.rich_rev_dir.mkdir(exist_ok=True)
-    # args.rich_reviews_path = args.rich_rev_dir/f'{args.div_name}.json'
-    # System = build_system(args, reviews, tests)
-    # args.prediction_path = args.cache_dir/f"{args.system}_pred_{args.div_name}"
-    # predictions = load_or_build(args.prediction_path, dumpp, loadp, System.predict_all)
-    # result = System.evaluate(predictions)
-    # print(result)
-
-    new_todo = """
-    request (with aspect parse) -> item -> (detailed) utility score
-    evaluation:
-    synthetic => score
-    online learning approx real world score
-    """
-    print(new_todo)
     print('todo: load test request')
     System = build_system(args, reviews, tests)
     mock_requests = [
@@ -116,3 +62,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# request (with aspect parse) -> item -> (detailed) utility score
+# evaluation:
+# synthetic => score
+# online learning approx real world score
