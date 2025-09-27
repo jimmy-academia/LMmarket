@@ -31,15 +31,15 @@ def main():
     args = parser.parse_args()
 
     new_todo = """
-    [v] = code and run; [o] = finish code; not yet run
+    [v] = code and run; [o] = finish code, not yet run; [..] = AI code, not yet reviewed; [ ] = under construction
 
     [v] 1. load and organize data --- (done with data/prepare_yelp.py) 
     [o] 2. process user location and distance exponential decay factor parameter --- (todo with data/process_yelp.py) 
-    3. generate and load test data --- (todo with data/load_test.py, and store some synthesize in data/test_yelp/...) 
+    [o] 3. generate and load test data --- (todo with data/load_test.py, and store some synthesize in data/test_yelp/...) 
     4. implement base environment class, implement evaluation -- (todo with systems/base.py) 
     5. implement naive baseline and run result (only utility, qualitative observe; todo with system/[baseline_name].py)
     6. implement main approach, run training, inference (todo with systems/sugar.py) 
-    7. use main approach mined aspect to finalize test data 
+    [..] 7. use main approach mined aspect to finalize test data 
     8. finalize evaluation comparison 
     9. introduce distance and conduct final experiment design!
     """
@@ -48,10 +48,13 @@ def main():
     args.cache_dir = Path(args.cache_dir)
     args.dset_root = Path(readf(args.dset_root).strip())
     args.cache_dir.mkdir(exist_ok=True)
-    args.prepared_data_path = args.cache_dir/f"prepared_{args.dset}_data.json"
-    DATA = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
-    args.processed_data_path = args.cache_dir/f"processed_{args.data}_data.json"
-    USER_loc = load_or_build(args.processed_data_path, dumpj, loadj, process_data, args, DATA)
+    prepared_data_path = args.cache_dir/f"prepared_{args.dset}_data.json"
+    DATA = load_or_build(prepared_data_path, dumpj, loadj, prepare_data, args)
+    processed_data_path = args.cache_dir/f"processed_{args.data}_data.json"
+    DATA['user_loc'] = load_or_build(processed_data_path, dumpj, loadj, process_data, args, DATA)
+
+    test_data_path = args.cache_dir/f"{args.dset}_test_data.json"
+    DATA['test'] = loadj(test_data_path)
 
     System = build_system(args, DATA)
 
