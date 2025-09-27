@@ -15,7 +15,7 @@ from pathlib import Path
 
 import argparse
 
-from data import prepare_data
+from data import prepare_data, process_data
 from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 
@@ -31,8 +31,15 @@ def main():
     args = parser.parse_args()
 
     new_todo = """
-    1. prepare data
-    2. (core) process data => evaluate
+    [v] 1. load and organize data --- (done with data/prepare_yelp.py) 
+    2. process user location and distance exponential decay factor parameter --- (todo with data/process_yelp.py) 
+    3. generate and load test data --- (todo with data/load_test.py, and store some synthesize in data/test_yelp/...) 
+    4. implement base environment class, implement evaluation -- (todo with systems/base.py) 
+    5. implement naive baseline and run result (only utility, qualitative observe; todo with system/[baseline_name].py)
+    6. implement main approach, run training, inference (todo with systems/sugar.py) 
+    7. use main approach mined aspect to finalize test data 
+    8. finalize evaluation comparison 
+    9. introduce distance and conduct final experiment design!
     """
     print(new_todo)
 
@@ -41,6 +48,8 @@ def main():
     args.cache_dir.mkdir(exist_ok=True)
     args.prepared_data_path = args.cache_dir/f"prepared_{args.dset}_data.json"
     DATA = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
+    args.processed_data_path = args.cache_dir/f"processed_{args.data}_data.json"
+    USER_loc = load_or_build(args.processed_data_path, dumpj, loadj, process_data, args, DATA)
 
     System = build_system(args, DATA)
 
