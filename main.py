@@ -31,8 +31,10 @@ def main():
     args = parser.parse_args()
 
     new_todo = """
+    [v] = code and run; [o] = finish code; not yet run
+
     [v] 1. load and organize data --- (done with data/prepare_yelp.py) 
-    2. process user location and distance exponential decay factor parameter --- (todo with data/process_yelp.py) 
+    [o] 2. process user location and distance exponential decay factor parameter --- (todo with data/process_yelp.py) 
     3. generate and load test data --- (todo with data/load_test.py, and store some synthesize in data/test_yelp/...) 
     4. implement base environment class, implement evaluation -- (todo with systems/base.py) 
     5. implement naive baseline and run result (only utility, qualitative observe; todo with system/[baseline_name].py)

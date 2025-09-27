@@ -8,6 +8,10 @@ def readf(path):
     with open(path, 'r') as f:
         return f.read()
 
+def writef(path, content):
+    with open(path, 'w') as f:
+        f.write(content)
+
 class NamespaceEncoder(json.JSONEncoder):
   def default(self, obj):
     if isinstance(obj, argparse.Namespace):
