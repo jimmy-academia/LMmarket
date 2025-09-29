@@ -55,7 +55,7 @@ def main():
     processed_data_path = args.cache_dir/f"processed_{args.data}_data.json"
     DATA['user_loc'] = load_or_build(processed_data_path, dumpj, loadj, process_data, args, DATA)
 
-    test_data_path = args.cache_dir/f"{args.dset}_test_data.json"
+    test_data_path = "data/test_data.json"
     DATA['test'] = loadj(test_data_path)
 
     System = build_system(args, DATA)

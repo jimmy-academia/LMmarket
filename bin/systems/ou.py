@@ -188,7 +188,6 @@ class OUBaseline(BaseSystem):
         U_excerpt = self.embed_texts(excerpt_texts)
         T_aspect = self.embed_texts(aspects)                    # [Q, D]
         
-
         alpha = 0.8
         S_a = T_aspect @ U_aspect.T
         S_e = T_aspect @ U_excerpt.T
