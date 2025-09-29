@@ -2,28 +2,28 @@ from collections import defaultdict
 from rank_bm25 import BM25Okapi
 from .base import BaseSystem
 
+
 class BM25Baseline(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
         self.cache = {}
-        self.default_city = 
 
-    def _ensure_city(self, city):
-        key = (city or "").strip().lower()
-        if not key:
+    def _ensure_city(self, city=None):
+        resolved = self.get_city_key(city)
+        if not resolved:
             return None
-        if key in self.cache:
-            return self.cache[key]
-        payload = self.data.get(key)
+        if resolved in self.cache:
+            return self.cache[resolved]
+        payload = self.get_city_data(resolved)
         if not payload:
-            self.cache[key] = None
+            self.cache[resolved] = None
             return None
         docs = self._build_documents(payload)
         item_ids = list(docs.keys())
-        tokenized = [self._tokenize(docs[iid]) for iid in item_ids]
+        tokenized = [self._tokenize(docs[item_id]) for item_id in item_ids]
         pairs = [(iid, toks) for iid, toks in zip(item_ids, tokenized) if toks]
         if not pairs:
-            self.cache[key] = None
+            self.cache[resolved] = None
             return None
         item_ids = [iid for iid, _ in pairs]
         tokenized = [toks for _, toks in pairs]
@@ -35,7 +35,7 @@ class BM25Baseline(BaseSystem):
             "documents": filtered_docs,
             "tokenized": tokenized,
         }
-        self.cache[key] = model
+        self.cache[resolved] = model
         return model
 
     def _build_documents(self, payload):
@@ -66,9 +66,12 @@ class BM25Baseline(BaseSystem):
                 categories = meta.get("categories")
                 if isinstance(categories, list) and categories:
                     parts.append(" ".join(c.strip() for c in categories if c))
-            parts.extend(texts)
+            for text in texts:
+                if text:
+                    parts.append(text)
             joined = "\n".join(part for part in parts if part)
-            docs[item_id] = joined
+            if joined:
+                docs[item_id] = joined
         return docs
 
     def _tokenize(self, text):
@@ -84,8 +87,10 @@ class BM25Baseline(BaseSystem):
         return tokens
 
     def rank_items(self, request, city=None, top_k=None):
-        model = self._ensure_city(city or self.default_city)
-        if not model or not request:
+        if not request:
+            return []
+        model = self._ensure_city(city)
+        if not model:
             return []
         tokens = self._tokenize(request)
         if not tokens:
