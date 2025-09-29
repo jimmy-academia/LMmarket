@@ -1,27 +1,12 @@
 from collections import defaultdict
-
 from rank_bm25 import BM25Okapi
-
 from .base import BaseSystem
-
 
 class BM25Baseline(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
         self.cache = {}
-        self.default_city = getattr(self.args, "city", "").strip().lower()
-        if not self.default_city:
-            self.default_city = self._find_default_city()
-        if self.default_city:
-            self._ensure_city(self.default_city)
-
-    def _find_default_city(self):
-        for key, payload in self.data.items():
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("REVIEWS"):
-                return key
-        return ""
+        self.default_city = 
 
     def _ensure_city(self, city):
         key = (city or "").strip().lower()

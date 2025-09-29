@@ -4,19 +4,19 @@ from .ou import OUBaseline
 from .sulm import SULMBaseline
 from .sat import SATBaseline
 
-def build_system(args, reviews, tests):
+def build_system(args, DATA):
     if args.system == 'best':
         print('[systems] >>> operating OUR PROPOSED METHOD')
-        return BestSystem(args, reviews, tests)
+        return BestSystem(args, DATA)
     if args.system == 'sat':
         print('[systems] >>> operating Segment Any Text baseline')
-        return SATBaseline(args, reviews, tests)
+        return SATBaseline(args, DATA)
     if args.system == 'bm25':
         print('[systems] >>> operating BM25 retrieval baseline')
-        return BM25Baseline(args, reviews)
+        return BM25Baseline(args, DATA)
     if args.system == 'ou':
         print('[systems] >>> operating Opinion Unit baseline')
-        return OUBaseline(args, reviews, tests)
+        return OUBaseline(args, DATA)
     if args.system == 'sulm':
         print('[systems] >>> operating Sentiment Utility Logistic Model baseline')
-        return SULMBaseline(args, reviews, tests)
+        return SULMBaseline(args, DATA)
