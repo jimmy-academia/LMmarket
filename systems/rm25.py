@@ -7,6 +7,9 @@ class BM25Baseline(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
         self.cache = {}
+        self.retrieve_k = getattr(args, "retrieve_k", 500)
+        self.bm25_top_m = getattr(args, "bm25_top_m", 3)
+        self.top_k = getattr(args, "top_k", 5)
 
     def _ensure_city(self, city=None):
         resolved = self.get_city_key(city)
@@ -18,61 +21,46 @@ class BM25Baseline(BaseSystem):
         if not payload:
             self.cache[resolved] = None
             return None
-        docs = self._build_documents(payload)
-        item_ids = list(docs.keys())
-        tokenized = [self._tokenize(docs[item_id]) for item_id in item_ids]
-        pairs = [(iid, toks) for iid, toks in zip(item_ids, tokenized) if toks]
-        if not pairs:
+        prepared = self._prepare_reviews(payload)
+        tokens = prepared.get("tokens")
+        if not tokens:
             self.cache[resolved] = None
             return None
-        item_ids = [iid for iid, _ in pairs]
-        tokenized = [toks for _, toks in pairs]
-        bm25 = BM25Okapi(tokenized)
-        filtered_docs = {iid: docs[iid] for iid in item_ids}
+        bm25 = BM25Okapi(tokens)
         model = {
             "bm25": bm25,
-            "item_ids": item_ids,
-            "documents": filtered_docs,
-            "tokenized": tokenized,
+            "review_ids": prepared.get("review_ids"),
+            "review_items": prepared.get("review_items"),
         }
         self.cache[resolved] = model
         return model
 
-    def _build_documents(self, payload):
-        reviews = payload.get("REVIEWS")
-        if not reviews:
-            reviews = []
-        info = payload.get("INFO")
-        if not info:
-            info = {}
-        grouped = defaultdict(list)
+    def _prepare_reviews(self, payload):
+        reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
+        result = {
+            "tokens": [],
+            "review_ids": [],
+            "review_items": [],
+        }
+        if not isinstance(reviews, list):
+            return result
         for entry in reviews:
-            item_id = entry.get("item_id")
-            text = entry.get("text")
-            if not item_id or not text:
+            if not isinstance(entry, dict):
                 continue
-            grouped[item_id].append(text.strip())
-        docs = {}
-        for item_id, texts in grouped.items():
-            parts = []
-            meta = info.get(item_id)
-            if meta:
-                name = meta.get("name")
-                if name:
-                    parts.append(str(name).strip())
-                address = meta.get("address")
-                if address:
-                    parts.append(str(address).strip())
-                categories = meta.get("categories")
-                if isinstance(categories, list) and categories:
-                    parts.append(" ".join(c.strip() for c in categories if c))
-            for text in texts:
-                if text:
-                    parts.append(text)
-            joined = "\n".join(part for part in parts if part)
-            if joined:
-                docs[item_id] = joined
-        return docs
+            review_id = entry.get("review_id")
+            item_id = entry.get("item_id")
+            if not item_id:
+                item_id = entry.get("business_id")
+            text = entry.get("text")
+            if not review_id or not item_id or not text:
+                continue
+            tokens = self._tokenize(text)
+            if not tokens:
+                continue
+            result["tokens"].append(tokens)
+            result["review_ids"].append(review_id)
+            result["review_items"].append(item_id)
+        return result
 
     def _tokenize(self, text):
         if not text:
@@ -96,12 +84,50 @@ class BM25Baseline(BaseSystem):
         if not tokens:
             return []
         scores = model["bm25"].get_scores(tokens)
-        pairs = sorted(zip(model["item_ids"], scores), key=lambda kv: kv[1], reverse=True)
-        if top_k is not None:
-            if top_k <= 0:
-                return []
-            pairs = pairs[:top_k]
-        return [item_id for item_id, _ in pairs]
+        indexed_scores = []
+        for index, score in enumerate(scores):
+            if score <= 0:
+                continue
+            indexed_scores.append((index, float(score)))
+        if not indexed_scores:
+            return []
+        indexed_scores.sort(key=lambda pair: pair[1], reverse=True)
+        limit = self.retrieve_k if isinstance(self.retrieve_k, int) and self.retrieve_k > 0 else None
+        if limit is not None and len(indexed_scores) > limit:
+            indexed_scores = indexed_scores[:limit]
+        aggregated = defaultdict(list)
+        for index, score in indexed_scores:
+            if index >= len(model["review_items"]):
+                continue
+            item_id = model["review_items"][index]
+            review_id = model["review_ids"][index] if index < len(model["review_ids"]) else None
+            if not item_id or not review_id:
+                continue
+            aggregated[item_id].append((score, review_id))
+        if not aggregated:
+            return []
+        results = []
+        for item_id, pairs in aggregated.items():
+            pairs.sort(key=lambda pair: pair[0], reverse=True)
+            m = self.bm25_top_m if isinstance(self.bm25_top_m, int) and self.bm25_top_m > 0 else None
+            limited = pairs[:m] if m is not None else pairs
+            total = 0.0
+            evidence = []
+            for score, review_id in limited:
+                total += float(score)
+                evidence.append(review_id)
+            results.append((item_id, total, evidence))
+        results.sort(key=lambda row: (-row[1], -len(row[2]), row[0]))
+        cutoff = top_k if isinstance(top_k, int) and top_k > 0 else self.top_k
+        trimmed = results[:cutoff] if cutoff and cutoff > 0 else results
+        formatted = []
+        for item_id, score, evidence in trimmed:
+            formatted.append({
+                "item_id": item_id,
+                "model_score": float(score),
+                "evidence": list(evidence),
+            })
+        return formatted
 
-    def recommend(self, request, city=None, top_k=10):
+    def recommend(self, request, city=None, top_k=None):
         return self.rank_items(request, city=city, top_k=top_k)
