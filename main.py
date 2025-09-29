@@ -23,10 +23,13 @@ from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='heur')
+    parser.add_argument('--system', type=str, default='bm25')
     # heur, sat, ou, sulm, sugar
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
+    parser.add_argument('--top_k', type=int, default=5)
+    parser.add_argument('--retrieve_k', type=int, default=500)
+    parser.add_argument('--bm25_top_m', type=int, default=3)
     # benchmark
     parser.add_argument('--num_test', type=int, default=2)
     args = parser.parse_args()
@@ -49,8 +52,13 @@ def main():
     print(new_todo)
 
     args.cache_dir = Path(args.cache_dir)
-    args.dset_root = Path(readf(args.dset_root).strip())
     args.cache_dir.mkdir(exist_ok=True)
+    dset_root_path = Path(args.dset_root)
+    if dset_root_path.is_file():
+        content = readf(dset_root_path).strip()
+        args.dset_root = Path(content) if content else dset_root_path.parent
+    else:
+        args.dset_root = dset_root_path
     prepared_data_path = args.cache_dir / f"prepared_{args.dset}_data.json"
     data = load_or_build(prepared_data_path, dumpj, loadj, prepare_data, args)
     processed_data_path = args.cache_dir / f"processed_{args.dset}_data.json"
@@ -65,6 +73,11 @@ def main():
         print(f"[main] >>> default city set to '{default_city}'")
 
     city = default_city
+    if city:
+        print(f"[main] >>> evaluating '{args.system}' for city '{city}' with top_k={args.top_k}")
+        system.evaluate(city=city, top_k=args.top_k)
+    else:
+        print("[main] >>> no city data available; skipping evaluation.")
 
 
 if __name__ == '__main__':
