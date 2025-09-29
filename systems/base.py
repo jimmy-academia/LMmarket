@@ -157,16 +157,22 @@ class BaseSystem:
                     evidence = entry.get("evidence")
                     if evidence is None:
                         evidence = []
+                    short_excerpt = entry.get("short_excerpt")
+                    full_explanation = entry.get("full_explanation")
                     packaged.append({
                         "item_id": item_id,
                         "model_score": score,
                         "evidence": evidence,
+                        "short_excerpt": short_excerpt,
+                        "full_explanation": full_explanation,
                     })
                 else:
                     packaged.append({
                         "item_id": entry,
                         "model_score": None,
                         "evidence": [],
+                        "short_excerpt": "",
+                        "full_explanation": "",
                     })
             self.result[request_id] = {
                 "request": {
@@ -185,8 +191,7 @@ class BaseSystem:
                 line = f"  {rank}. {candidate['item_id']}"
                 if score is not None:
                     line += f" (score={float(score):.4f})"
-                evidence = candidate.get("evidence")
-                if evidence:
-                    joined = ",".join(str(e) for e in evidence)
-                    line += f" evidence={joined}"
+                short_excerpt = candidate.get("short_excerpt")
+                if short_excerpt:
+                    line += f" — {short_excerpt}"
                 print(line)
