@@ -183,6 +183,7 @@ class BaseSystem:
                 "candidates": packaged,
             }
             print(f"[eval] Request '{request_id}' in {resolved_city}")
+            print(query)
             if not packaged:
                 print("  (no candidates)")
                 continue

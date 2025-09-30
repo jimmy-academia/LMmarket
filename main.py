@@ -22,7 +22,7 @@ from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='bm25')
+    parser.add_argument('--system', type=str, default='dense')
     # heur, sat, ou, sulm, sugar
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
@@ -34,17 +34,8 @@ def main():
     args = parser.parse_args()
 
     new_todo = """
-    [v] = code and run; [o] = finish code, not yet run; [..] = AI code, not yet reviewed; [ ] = under construction
-
-    [v] 1. load and organize data --- (done with data/prepare_yelp.py)
-    [o] 2. process user location and distance exponential decay factor parameter --- (todo with data/process_yelp.py)
-    [o] 3. generate and load test data --- (todo with data/load_test.py, and store some synthesize in data/test_yelp/...)
-
-    4. implement base environment class, implement evaluation -- (todo with systems/base.py)
-    5. implement naive baseline and run result (only utility, qualitative observe; todo with system/[baseline_name].py)
-    6. implement main approach, run training, inference (todo with systems/sugar.py)
-    7. use main approach mined aspect to finalize gold example
-
+    a. implement main approach, run training, inference (todo with systems/sugar.py)
+    b. implement explanable evaluation with LLM
     8. finalize evaluation comparison
     9. introduce distance and conduct final experiment design!
     """

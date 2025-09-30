@@ -1,5 +1,5 @@
 # from .method import BestSystem
-from .rm25 import BM25Baseline
+from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
 # from .ou import OUBaseline
 # from .sulm import SULMBaseline
@@ -13,7 +13,7 @@ def build_system(args, data):
     # if args.system == 'sat':
         # print('[systems] >>> operating Segment Any Text baseline')
         # return SegmentAnyTextBaseline(args, data)
-    if args.system == 'bm25':
+    if args.system == 'sparse':
         print('[systems] >>> operating BM25 retrieval baseline')
         return BM25Baseline(args, data)
     if args.system == 'dense':
