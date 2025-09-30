@@ -9,7 +9,6 @@ main.py
 2. application stage
     - todo
 '''
-import faiss
 import numpy as np
 from pathlib import Path
 
