@@ -225,6 +225,10 @@ class HyperbolicSegmentSystem(BaseSystem):
         audit_cache = {}
         previous_tau = None
         tau = provisional_tau
+
+        #### temp
+        max_iterations = 1
+        ###
         for iteration in range(max_iterations):
             if iteration > 0:
                 tau = (low + high) / 2.0
