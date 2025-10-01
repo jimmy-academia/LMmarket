@@ -1,9 +1,11 @@
-from symspellpy import SymSpell, Verbosity
-from wtpsplit import SaT
 from tqdm import tqdm
 
-SPECIAL_KEYS = {"test", "user_loc"}
+from symspellpy import SymSpell, Verbosity
+from wtpsplit import SaT
 
+from utils import load_or_build, dumpp, loadp
+
+SPECIAL_KEYS = {"test", "user_loc"}
 
 class BaseSystem:
     def __init__(self, args, data):
@@ -41,6 +43,9 @@ class BaseSystem:
             batch_size = 32
         self.segment_batch_size = batch_size
         self.all_reviews = self._collect_all_reviews()
+
+        self.symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
+        self.symspell = load_or_build(self.symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
         self.symspell = self._build_symspell(self.all_reviews)
         self.segment_model = None
         self.segments = []
@@ -287,7 +292,7 @@ class BaseSystem:
         if not valid_reviews:
             return
         if not self.segment_model:
-            self.segment_model = SaT("sat-12l-sm")
+            self.segment_model = SaT("sat-12l-sm", ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
         step = self.segment_batch_size if self.segment_batch_size > 0 else 32
         total = len(valid_reviews)
         for start in tqdm(range(0, total, step), ncols=88, desc="[base] _segment_reviews"):
