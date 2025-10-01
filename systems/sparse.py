@@ -1,7 +1,8 @@
+#sparse.py
+
 from collections import defaultdict
 from rank_bm25 import BM25Okapi
 from .base import BaseSystem
-
 
 class BM25Baseline(BaseSystem):
     def __init__(self, args, data):

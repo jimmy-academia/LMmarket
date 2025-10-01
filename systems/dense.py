@@ -1,8 +1,8 @@
+#dense.py
+
 import numpy as np
 from sentence_transformers import SentenceTransformer
-
 from .base import BaseSystem
-
 
 class DenseRetrieverBaseline(BaseSystem):
     def __init__(self, args, data):
