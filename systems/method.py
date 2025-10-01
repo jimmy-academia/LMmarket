@@ -1,11 +1,12 @@
-import os
 import json
 import math
 import torch
+from pathlib import Path
 
 from .base import BaseSystem
 from networks.model import SegmentEmbeddingModel
 from llm import run_llm_batch
+from utils import load_or_build
 
 
 class HyperbolicSegmentSystem(BaseSystem):
@@ -28,14 +29,24 @@ class HyperbolicSegmentSystem(BaseSystem):
             self.learning_rate = 2e-5
         model_config = self._build_model_config(args)
         self.segment_encoder = SegmentEmbeddingModel(model_config)
+        cache_dir = getattr(self.args, "cache_dir", "cache")
+        self.cache_dir = Path(cache_dir) if not isinstance(cache_dir, Path) else cache_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        div_name = getattr(self.args, "div_name", getattr(self.args, "dset", "default"))
+        checkpoint = getattr(self.args, "segment_checkpoint", None)
+        if checkpoint:
+            self.segment_model_path = Path(checkpoint)
+        else:
+            self.segment_model_path = self.cache_dir / f"segment_encoder_{div_name}.pt"
+        self.segment_model_path.parent.mkdir(parents=True, exist_ok=True)
         self.model_ready = False
         self.city_indexes = {}
-        self._load_or_train_model()
+        self._ensure_model_ready()
 
     def recommend(self, request, city=None, top_k=None):
         if not request:
             return []
-        self._load_or_train_model()
+        self._ensure_model_ready()
         index = self._ensure_city_index(city)
         if not index:
             return []
@@ -123,23 +134,29 @@ class HyperbolicSegmentSystem(BaseSystem):
             config["device"] = device_value
         return config
 
-    def _load_or_train_model(self):
+    def _ensure_model_ready(self):
         if self.model_ready:
             return
-        checkpoint = getattr(self.args, "segment_checkpoint", None)
-        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
-            state = torch.load(checkpoint, map_location=self.segment_encoder.device)
-            if isinstance(state, dict):
-                for key in ["model_state_dict", "state_dict", "model"]:
-                    if key in state and isinstance(state[key], dict):
-                        state = state[key]
-                        break
-            if isinstance(state, dict):
-                self.segment_encoder.load_state_dict(state, strict=False)
+
+        def save_fn(path, state):
+            torch.save(state, path)
+
+        def load_fn(path):
+            return torch.load(path, map_location=self.segment_encoder.device)
+
+        def build_fn():
+            self._train_with_segments()
             self.segment_encoder.eval()
-            self.model_ready = True
-            return
-        self._train_with_segments()
+            return self.segment_encoder.state_dict()
+
+        state = load_or_build(self.segment_model_path, save_fn, load_fn, build_fn)
+        if isinstance(state, dict):
+            for key in ["model_state_dict", "state_dict", "model"]:
+                nested = state.get(key)
+                if isinstance(nested, dict):
+                    state = nested
+                    break
+            self.segment_encoder.load_state_dict(state, strict=False)
         self.segment_encoder.eval()
         self.model_ready = True
 
