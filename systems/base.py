@@ -46,42 +46,16 @@ class BaseSystem:
         self.segment_batch_size = batch_size
         self.all_reviews = self._collect_all_reviews()
 
-        self.symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
-        self.symspell = load_or_build(self.symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
+        symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
+        self.symspell = load_or_build(symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
         self.symspell = self._build_symspell(self.all_reviews)
         self.segment_model = None
-        self.segment_cache_path = self._resolve_segment_cache_path()
-        segment_payload = load_or_build(
-            self.segment_cache_path,
-            self._save_segment_data,
-            self._load_segment_data,
-            self._segment_reviews,
-            self.all_reviews,
-        )
+        segment_path = args.cache_dir / f"segments_{args.dset}.pkl"
+        segment_payload = load_or_build(segment_path, dumpp, loadp, self._segment_reviews, self.all_reviews)
         self._apply_segment_data(segment_payload)
 
     def list_cities(self):
         return list(self.city_list)
-
-    def _resolve_segment_cache_path(self):
-        cache_dir = getattr(self.args, "cache_dir", None)
-        cache_dir = Path(cache_dir) if cache_dir else Path(".")
-        if not cache_dir.exists():
-            cache_dir.mkdir(parents=True, exist_ok=True)
-        dataset = getattr(self.args, "dset", None)
-        if dataset:
-            return cache_dir / f"segments_{dataset}.pkl"
-        return cache_dir / "segments.pkl"
-
-    def _save_segment_data(self, path, payload):
-        path = Path(path)
-        parent = path.parent
-        if parent and not parent.exists():
-            parent.mkdir(parents=True, exist_ok=True)
-        dumpp(path, payload)
-
-    def _load_segment_data(self, path):
-        return loadp(path)
 
     def _apply_segment_data(self, payload):
         data = payload if isinstance(payload, dict) else {}
@@ -384,7 +358,6 @@ class BaseSystem:
             "review_segments": review_segments,
             "item_segments": item_segments,
         }
-        self._apply_segment_data(result)
         return result
 
     def get_review_segments(self, review_id):
