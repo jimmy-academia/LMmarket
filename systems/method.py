@@ -1,8 +1,11 @@
 import os
+import json
+import math
 import torch
 
 from .base import BaseSystem
 from networks.model import SegmentEmbeddingModel
+from llm import run_llm_batch
 
 
 class HyperbolicSegmentSystem(BaseSystem):
@@ -181,6 +184,317 @@ class HyperbolicSegmentSystem(BaseSystem):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+    def calibrate_threshold_with_llm(self, candidates, provisional_tau=None, sample_size=200, target_precision_lb=0.9, sentiment_conf_min=0.7, double_judge=False, model="gpt-4.1-mini", confidence=0.95, max_iterations=6):
+        usable = []
+        for entry in candidates or []:
+            if not isinstance(entry, dict):
+                continue
+            score = entry.get("score")
+            if score is None:
+                score = entry.get("similarity")
+            if score is None:
+                continue
+            if not isinstance(score, (float, int)):
+                continue
+            anchor = entry.get("anchor") or entry.get("anchor_segment") or entry.get("segment_a") or {}
+            neighbor = entry.get("neighbor") or entry.get("neighbor_segment") or entry.get("segment_b") or {}
+            anchor_text = self._normalize_text(anchor.get("text"))
+            neighbor_text = self._normalize_text(neighbor.get("text"))
+            if not anchor_text or not neighbor_text:
+                continue
+            usable.append({
+                "score": float(score),
+                "anchor": anchor,
+                "neighbor": neighbor,
+                "anchor_text": anchor_text,
+                "neighbor_text": neighbor_text,
+            })
+        if not usable:
+            fallback_tau = float(provisional_tau) if isinstance(provisional_tau, (float, int)) else 0.0
+            return fallback_tau, [], [], [], []
+        scores = [entry["score"] for entry in usable]
+        min_score = min(scores)
+        max_score = max(scores)
+        if provisional_tau is None or not isinstance(provisional_tau, (float, int)):
+            provisional_tau = sum(scores) / len(scores)
+        provisional_tau = min(max(float(provisional_tau), min_score), max_score)
+        low = min_score
+        high = max_score
+        best_tau = None
+        audit_cache = {}
+        previous_tau = None
+        tau = provisional_tau
+        for iteration in range(max_iterations):
+            if iteration > 0:
+                tau = (low + high) / 2.0
+            if previous_tau is not None and abs(tau - previous_tau) < 1e-4:
+                break
+            previous_tau = tau
+            qualified = [entry for entry in usable if entry["score"] >= tau]
+            if not qualified:
+                high = tau
+                continue
+            qualified.sort(key=lambda entry: abs(entry["score"] - tau))
+            sample = qualified[:sample_size] if len(qualified) > sample_size else qualified
+            audits = self._ensure_llm_audits(sample, audit_cache, model, double_judge)
+            positives = sum(1 for key in audits if audits[key]["aspect_same"])
+            total = len(audits)
+            if total == 0:
+                high = tau
+                continue
+            lb = self._wilson_lower_bound(positives, total, confidence)
+            if lb >= target_precision_lb:
+                best_tau = tau
+                high = tau
+            else:
+                low = tau
+        if best_tau is None:
+            best_tau = high
+        final_tau = max(min(best_tau, max_score), min_score)
+        eligible_pairs = [entry for entry in usable if entry["score"] >= final_tau]
+        self._ensure_llm_audits(eligible_pairs, audit_cache, model, double_judge)
+        silver_aspect = []
+        bronze_aspect = []
+        silver_sentiment = {}
+        bronze_sentiment = {}
+        for entry in eligible_pairs:
+            key = self._pair_key(entry)
+            audit = audit_cache.get(key)
+            anchor = entry["anchor"]
+            neighbor = entry["neighbor"]
+            anchor_id = self._segment_identifier(anchor, entry["anchor_text"])
+            neighbor_id = self._segment_identifier(neighbor, entry["neighbor_text"])
+            payload = {
+                "anchor_segment": anchor_id,
+                "neighbor_segment": neighbor_id,
+                "score": entry["score"],
+            }
+            if audit and audit["aspect_same"]:
+                payload["aspect_label"] = audit.get("aspect_label")
+                silver_aspect.append(payload)
+            else:
+                bronze_aspect.append(payload)
+            if audit:
+                for idx, segment in enumerate((anchor, neighbor)):
+                    seg_id = self._segment_identifier(segment, entry["anchor_text"] if idx == 0 else entry["neighbor_text"])
+                    sentiment = audit["sentiments"][idx]
+                    if not seg_id or sentiment is None:
+                        continue
+                    container = silver_sentiment if sentiment["confidence"] >= sentiment_conf_min else bronze_sentiment
+                    existing = container.get(seg_id)
+                    enriched = {
+                        "segment_id": seg_id,
+                        "label": sentiment["label"],
+                        "score": sentiment["score"],
+                        "confidence": sentiment["confidence"],
+                        "source": "llm",
+                    }
+                    if existing:
+                        enriched = self._merge_sentiments(existing, enriched)
+                    container[seg_id] = enriched
+        silver_list = list(silver_sentiment.values())
+        bronze_list = list(bronze_sentiment.values())
+        silver_list.sort(key=lambda row: (-row["confidence"], -abs(row["score"]), row["segment_id"]))
+        bronze_list.sort(key=lambda row: (-row["confidence"], -abs(row["score"]), row["segment_id"]))
+        silver_aspect.sort(key=lambda row: (-row["score"], row["anchor_segment"], row["neighbor_segment"]))
+        bronze_aspect.sort(key=lambda row: (-row["score"], row["anchor_segment"], row["neighbor_segment"]))
+        return final_tau, silver_aspect, bronze_aspect, silver_list, bronze_list
+
+    def _merge_sentiments(self, existing, update):
+        weight_existing = existing.get("confidence", 0.0)
+        weight_update = update.get("confidence", 0.0)
+        total = weight_existing + weight_update
+        if total <= 0:
+            merged_score = 0.5 * (existing.get("score", 0.0) + update.get("score", 0.0))
+            merged_conf = max(existing.get("confidence", 0.0), update.get("confidence", 0.0))
+        else:
+            merged_score = (existing.get("score", 0.0) * weight_existing + update.get("score", 0.0) * weight_update) / total
+            merged_conf = total / 2.0
+        label = existing.get("label")
+        if update.get("confidence", 0.0) >= existing.get("confidence", 0.0):
+            label = update.get("label")
+        merged = {
+            "segment_id": existing.get("segment_id") or update.get("segment_id"),
+            "label": label,
+            "score": merged_score,
+            "confidence": merged_conf,
+            "source": "llm",
+        }
+        return merged
+
+    def _segment_identifier(self, segment, fallback):
+        if not isinstance(segment, dict):
+            return fallback
+        for key in ["segment_id", "id", "segment"]:
+            value = segment.get(key)
+            if value:
+                return value
+        item = segment.get("item_id")
+        if item:
+            text = self._normalize_text(segment.get("text"))
+            if text:
+                return f"{item}:{text}"
+        return fallback
+
+    def _ensure_llm_audits(self, entries, cache, model, double_judge):
+        pending = []
+        keys = []
+        for entry in entries:
+            key = self._pair_key(entry)
+            if key in cache:
+                continue
+            prompt = self._build_llm_prompt(entry["anchor_text"], entry["neighbor_text"])
+            pending.append(prompt)
+            keys.append(key)
+        if pending:
+            responses = run_llm_batch(pending, "segment_aspect_sentiment_audit", model=model, temperature=0.0, use_json=True)
+            parsed_primary = [self._parse_audit_output(text) for text in responses]
+            if double_judge:
+                responses_secondary = run_llm_batch(pending, "segment_aspect_sentiment_audit_double", model=model, temperature=0.0, use_json=True)
+                parsed_secondary = [self._parse_audit_output(text) for text in responses_secondary]
+                combined = []
+                for first, second in zip(parsed_primary, parsed_secondary):
+                    combined.append(self._combine_audits(first, second))
+                parsed_primary = combined
+            for key, parsed in zip(keys, parsed_primary):
+                cache[key] = parsed
+        result = {}
+        for entry in entries:
+            key = self._pair_key(entry)
+            if key in cache:
+                result[key] = cache[key]
+        return result
+
+    def _combine_audits(self, primary, secondary):
+        if not primary and not secondary:
+            return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
+        if not secondary:
+            return primary
+        if not primary:
+            return secondary
+        sentiments_primary = primary.get("sentiments") or [None, None]
+        sentiments_secondary = secondary.get("sentiments") or [None, None]
+        aspect_same = bool(primary.get("aspect_same")) and bool(secondary.get("aspect_same"))
+        label = primary.get("aspect_label") if aspect_same else ""
+        if not label and aspect_same:
+            label = secondary.get("aspect_label") or ""
+        sentiments = []
+        for idx in range(2):
+            sentiments.append(self._merge_sentiment_entries(sentiments_primary[idx], sentiments_secondary[idx]))
+        return {"aspect_same": aspect_same, "aspect_label": label, "sentiments": sentiments}
+
+    def _merge_sentiment_entries(self, first, second):
+        if first is None and second is None:
+            return {"label": "NEU", "score": 0.0, "confidence": 0.0}
+        if second is None:
+            return first
+        if first is None:
+            return second
+        weight_first = first.get("confidence", 0.0)
+        weight_second = second.get("confidence", 0.0)
+        total = weight_first + weight_second
+        if total <= 0:
+            score = 0.5 * (first.get("score", 0.0) + second.get("score", 0.0))
+            confidence = max(first.get("confidence", 0.0), second.get("confidence", 0.0))
+        else:
+            score = (first.get("score", 0.0) * weight_first + second.get("score", 0.0) * weight_second) / total
+            confidence = total / 2.0
+        label = first.get("label") if weight_first >= weight_second else second.get("label")
+        return {"label": label, "score": score, "confidence": confidence}
+
+    def _pair_key(self, entry):
+        anchor_id = self._segment_identifier(entry["anchor"], entry["anchor_text"])
+        neighbor_id = self._segment_identifier(entry["neighbor"], entry["neighbor_text"])
+        return (str(anchor_id), str(neighbor_id))
+
+    def _build_llm_prompt(self, anchor_text, neighbor_text):
+        template = [
+            "You are auditing two review segments.",
+            "For each pair, answer in JSON with keys: aspect_same (YES or NO), aspect_label (short phrase), segment_a, segment_b.",
+            "segment_a and segment_b must each contain label (NEG/NEU/POS), score (between -1 and 1), confidence (between 0 and 1).",
+            "Decide aspect_same by focusing on the primary aspect described, ignoring sentiment differences.",
+            "Use empty string for aspect_label when aspect_same is NO.",
+            "Pair:",
+            f"Segment A: {self._truncate_for_prompt(anchor_text)}",
+            f"Segment B: {self._truncate_for_prompt(neighbor_text)}",
+        ]
+        return "\n".join(template)
+
+    def _truncate_for_prompt(self, text, limit=480):
+        snippet = text.strip()
+        if len(snippet) <= limit:
+            return snippet
+        trimmed = snippet[:limit].rstrip()
+        return f"{trimmed}…"
+
+    def _parse_audit_output(self, text):
+        if not text:
+            return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`").strip()
+            if cleaned.lower().startswith("json"):
+                cleaned = cleaned[4:].strip()
+        try:
+            data = json.loads(cleaned)
+        except Exception:
+            return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
+        aspect_flag = str(data.get("aspect_same", "")).strip().upper() == "YES"
+        label = self._normalize_text(data.get("aspect_label")) if aspect_flag else ""
+        sentiments = []
+        for key in ["segment_a", "segment_b"]:
+            sentiments.append(self._normalize_sentiment_entry(data.get(key)))
+        return {"aspect_same": aspect_flag, "aspect_label": label, "sentiments": sentiments}
+
+    def _normalize_sentiment_entry(self, payload):
+        if not isinstance(payload, dict):
+            return {"label": "NEU", "score": 0.0, "confidence": 0.0}
+        label = str(payload.get("label", "NEU")).strip().upper()
+        if label not in {"NEG", "NEU", "POS"}:
+            label = "NEU"
+        score = payload.get("score", 0.0)
+        try:
+            score = float(score)
+        except Exception:
+            score = 0.0
+        score = max(min(score, 1.0), -1.0)
+        confidence = payload.get("confidence", 0.0)
+        try:
+            confidence = float(confidence)
+        except Exception:
+            confidence = 0.0
+        confidence = max(min(confidence, 1.0), 0.0)
+        return {"label": label, "score": score, "confidence": confidence}
+
+    def _wilson_lower_bound(self, success, total, confidence):
+        if total <= 0:
+            return 0.0
+        if success <= 0:
+            return 0.0
+        p = float(success) / float(total)
+        z = self._z_value(confidence)
+        denominator = 1.0 + (z ** 2) / total
+        centre = p + (z ** 2) / (2.0 * total)
+        margin = z * math.sqrt((p * (1.0 - p) + (z ** 2) / (4.0 * total)) / total)
+        return (centre - margin) / denominator
+
+    def _z_value(self, confidence):
+        alpha = 1.0 - confidence
+        if alpha <= 0:
+            return 0.0
+        # approximate inverse error function for normal quantile (two-tailed)
+        target = 1.0 - alpha / 2.0
+        return math.sqrt(2.0) * self._inv_erf(2.0 * target - 1.0)
+
+    def _inv_erf(self, x):
+        clamped = max(min(x, 0.999999), -0.999999)
+        a = 0.147
+        log_term = math.log(1.0 - clamped * clamped)
+        part = 2.0 / (math.pi * a) + log_term / 2.0
+        inside = part * part - log_term / a
+        sign = 1.0 if x >= 0 else -1.0
+        return sign * math.sqrt(max(inside, 0.0))
 
     def _collect_training_pairs(self, limit):
         if limit <= 0:
