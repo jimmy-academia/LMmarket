@@ -22,7 +22,7 @@ from utils import load_or_build, readf, dumpj, loadj, dumpp, loadp
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='dense')
+    parser.add_argument('--system', type=str, default='method')
     # heur, sat, ou, sulm, sugar
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--dset_root', type=str, default='.dset_root')
