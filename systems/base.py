@@ -1,3 +1,6 @@
+from symspellpy import SymSpell, Verbosity
+from wtpsplit import SaT
+
 SPECIAL_KEYS = {"test", "user_loc"}
 
 
@@ -32,6 +35,18 @@ class BaseSystem:
             top_k = 5
             setattr(args, "top_k", top_k)
         self.default_top_k = top_k
+        batch_size = getattr(args, "segment_batch_size", 32)
+        if not isinstance(batch_size, int) or batch_size <= 0:
+            batch_size = 32
+        self.segment_batch_size = batch_size
+        self.all_reviews = self._collect_all_reviews()
+        self.symspell = self._build_symspell(self.all_reviews)
+        self.segment_model = None
+        self.segments = []
+        self.segment_lookup = {}
+        self.review_segments = {}
+        self.item_segments = {}
+        self._segment_reviews(self.all_reviews)
 
     def list_cities(self):
         return list(self.city_list)
@@ -77,6 +92,7 @@ class BaseSystem:
             query = entry.strip()
             if not query:
                 return None
+            query = self._correct_spelling(query)
             result = {
                 "request_id": request_id,
                 "query": query,
@@ -93,7 +109,11 @@ class BaseSystem:
                 request["group"] = group
             query = request.get("query")
             if isinstance(query, str):
-                request["query"] = query.strip()
+                cleaned = query.strip()
+                if cleaned:
+                    request["query"] = self._correct_spelling(cleaned)
+                else:
+                    request.pop("query", None)
             query = request.get("query")
             if not query:
                 return None
@@ -196,3 +216,116 @@ class BaseSystem:
                 if short_excerpt:
                     line += f" — {short_excerpt}"
                 print(line)
+
+    def _collect_all_reviews(self):
+        rows = []
+        for key, payload in self.data.items():
+            if key in SPECIAL_KEYS:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
+            if not isinstance(reviews, list):
+                continue
+            for review in reviews:
+                if isinstance(review, dict):
+                    rows.append(review)
+        return rows
+
+    def _tokenize_for_spell(self, text):
+        if not text:
+            return []
+        buffer = []
+        for ch in str(text):
+            if ch.isalpha():
+                buffer.append(ch.lower())
+            elif ch.isdigit():
+                buffer.append(ch)
+            else:
+                buffer.append(" ")
+        tokens = "".join(buffer).split()
+        return [tok for tok in tokens if tok]
+
+    def _build_symspell(self, reviews):
+        if not reviews:
+            return None
+        counts = {}
+        for review in reviews:
+            text = review.get("text")
+            for token in self._tokenize_for_spell(text):
+                counts[token] = counts.get(token, 0) + 1
+        if not counts:
+            return None
+        symspell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
+        for token, freq in counts.items():
+            symspell.create_dictionary_entry(token, freq)
+        return symspell
+
+    def _correct_spelling(self, text):
+        if not text or not self.symspell:
+            return text
+        words = text.split()
+        if not words:
+            return text
+        corrected = []
+        for word in words:
+            matches = self.symspell.lookup(word, Verbosity.CLOSEST)
+            corrected.append(matches[0].term if matches else word)
+        return " ".join(corrected)
+
+    def spellfix(self, text):
+        return self._correct_spelling(text)
+
+    def _segment_reviews(self, reviews):
+        self.segments = []
+        self.segment_lookup = {}
+        self.review_segments = {}
+        self.item_segments = {}
+        valid_reviews = [r for r in reviews if isinstance(r, dict) and r.get("text")]
+        if not valid_reviews:
+            return
+        if not self.segment_model:
+            self.segment_model = SaT("sat-12l-sm")
+        step = self.segment_batch_size if self.segment_batch_size > 0 else 32
+        total = len(valid_reviews)
+        for start in range(0, total, step):
+            batch = valid_reviews[start:start + step]
+            texts = [r.get("text") for r in batch]
+            splits = list(self.segment_model.split(texts))
+            for review, pieces in zip(batch, splits):
+                rid = review.get("review_id")
+                item_id = review.get("item_id")
+                if not item_id:
+                    item_id = review.get("business_id")
+                user_id = review.get("user_id")
+                collected = []
+                for pos, segment in enumerate(pieces):
+                    content = segment.strip()
+                    if not content:
+                        continue
+                    seg_id = f"{rid}::{pos}" if rid else f"seg::{len(self.segments)}"
+                    record = {
+                        "segment_id": seg_id,
+                        "review_id": rid,
+                        "item_id": item_id,
+                        "user_id": user_id,
+                        "position": pos,
+                        "text": content,
+                    }
+                    self.segments.append(record)
+                    self.segment_lookup[seg_id] = record
+                    collected.append(record)
+                if rid:
+                    self.review_segments[rid] = collected
+                if item_id:
+                    existing = self.item_segments.get(item_id)
+                    if existing is None:
+                        existing = []
+                        self.item_segments[item_id] = existing
+                    existing.extend(collected)
+
+    def get_review_segments(self, review_id):
+        return self.review_segments.get(review_id, [])
+
+    def get_segment(self, segment_id):
+        return self.segment_lookup.get(segment_id)
