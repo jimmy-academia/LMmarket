@@ -4,11 +4,13 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
-
+from tqdm import tqdm
 
 class SegmentEmbeddingModel(nn.Module):
     def __init__(self, config=None):
         super().__init__()
+        print('in main model init')
+
         if config is None:
             config = {}
         backbone_name = config.get("backbone_name")
@@ -110,7 +112,7 @@ class SegmentEmbeddingModel(nn.Module):
         aspects = []
         sentiments = []
         self.eval()
-        for start in range(0, len(texts), batch_size):
+        for start in tqdm(range(0, len(texts), batch_size), ncols=88,desc="encode_texts"):
             batch = texts[start:start + batch_size]
             tokens = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
             tokens = {key: value.to(self.device) for key, value in tokens.items()}

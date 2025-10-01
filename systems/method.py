@@ -44,6 +44,7 @@ class HyperbolicSegmentSystem(BaseSystem):
         self._ensure_model_ready()
 
     def recommend(self, request, city=None, top_k=None):
+        print('in main method recommend')
         if not request:
             return []
         self._ensure_model_ready()
@@ -161,6 +162,7 @@ class HyperbolicSegmentSystem(BaseSystem):
         self.model_ready = True
 
     def _train_with_segments(self):
+        print('method.py train with segments')
         if self.training_samples <= 0:
             return
         pairs = self._collect_training_pairs(self.training_samples)

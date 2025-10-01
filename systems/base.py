@@ -1,5 +1,6 @@
 from symspellpy import SymSpell, Verbosity
 from wtpsplit import SaT
+from tqdm import tqdm
 
 SPECIAL_KEYS = {"test", "user_loc"}
 
@@ -157,6 +158,7 @@ class BaseSystem:
             return
         cutoff = top_k if isinstance(top_k, int) and top_k > 0 else self.default_top_k
         for request in requests:
+            print('base.py', request)
             request_id = request.get("request_id")
             query = request.get("query")
             if not query:
@@ -250,7 +252,7 @@ class BaseSystem:
         if not reviews:
             return None
         counts = {}
-        for review in reviews:
+        for review in tqdm(reviews, ncols=88, desc="[base] _build_symspell"):
             text = review.get("text")
             for token in self._tokenize_for_spell(text):
                 counts[token] = counts.get(token, 0) + 1
@@ -288,7 +290,7 @@ class BaseSystem:
             self.segment_model = SaT("sat-12l-sm")
         step = self.segment_batch_size if self.segment_batch_size > 0 else 32
         total = len(valid_reviews)
-        for start in range(0, total, step):
+        for start in tqdm(range(0, total, step), ncols=88, desc="[base] _segment_reviews"):
             batch = valid_reviews[start:start + step]
             texts = [r.get("text") for r in batch]
             splits = list(self.segment_model.split(texts))
