@@ -3,6 +3,8 @@ from tqdm import tqdm
 from symspellpy import SymSpell, Verbosity
 from wtpsplit import SaT
 
+from pathlib import Path
+
 from utils import load_or_build, dumpp, loadp
 
 SPECIAL_KEYS = {"test", "user_loc"}
@@ -48,14 +50,53 @@ class BaseSystem:
         self.symspell = load_or_build(self.symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
         self.symspell = self._build_symspell(self.all_reviews)
         self.segment_model = None
-        self.segments = []
-        self.segment_lookup = {}
-        self.review_segments = {}
-        self.item_segments = {}
-        self._segment_reviews(self.all_reviews)
+        self.segment_cache_path = self._resolve_segment_cache_path()
+        segment_payload = load_or_build(
+            self.segment_cache_path,
+            self._save_segment_data,
+            self._load_segment_data,
+            self._segment_reviews,
+            self.all_reviews,
+        )
+        self._apply_segment_data(segment_payload)
 
     def list_cities(self):
         return list(self.city_list)
+
+    def _resolve_segment_cache_path(self):
+        cache_dir = getattr(self.args, "cache_dir", None)
+        cache_dir = Path(cache_dir) if cache_dir else Path(".")
+        if not cache_dir.exists():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        dataset = getattr(self.args, "dset", None)
+        if dataset:
+            return cache_dir / f"segments_{dataset}.pkl"
+        return cache_dir / "segments.pkl"
+
+    def _save_segment_data(self, path, payload):
+        path = Path(path)
+        parent = path.parent
+        if parent and not parent.exists():
+            parent.mkdir(parents=True, exist_ok=True)
+        dumpp(path, payload)
+
+    def _load_segment_data(self, path):
+        return loadp(path)
+
+    def _apply_segment_data(self, payload):
+        data = payload if isinstance(payload, dict) else {}
+        segments_value = data.get("segments")
+        segment_lookup_value = data.get("segment_lookup")
+        review_segments_value = data.get("review_segments")
+        item_segments_value = data.get("item_segments")
+        segments = segments_value if isinstance(segments_value, list) else []
+        segment_lookup = segment_lookup_value if isinstance(segment_lookup_value, dict) else {}
+        review_segments = review_segments_value if isinstance(review_segments_value, dict) else {}
+        item_segments = item_segments_value if isinstance(item_segments_value, dict) else {}
+        self.segments = segments
+        self.segment_lookup = segment_lookup
+        self.review_segments = review_segments
+        self.item_segments = item_segments
 
     def get_city_key(self, city=None):
         if city:
@@ -284,13 +325,20 @@ class BaseSystem:
         return self._correct_spelling(text)
 
     def _segment_reviews(self, reviews):
-        self.segments = []
-        self.segment_lookup = {}
-        self.review_segments = {}
-        self.item_segments = {}
+        segments = []
+        segment_lookup = {}
+        review_segments = {}
+        item_segments = {}
         valid_reviews = [r for r in reviews if isinstance(r, dict) and r.get("text")]
         if not valid_reviews:
-            return
+            result = {
+                "segments": segments,
+                "segment_lookup": segment_lookup,
+                "review_segments": review_segments,
+                "item_segments": item_segments,
+            }
+            self._apply_segment_data(result)
+            return result
         if not self.segment_model:
             self.segment_model = SaT("sat-12l-sm", ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
         step = self.segment_batch_size if self.segment_batch_size > 0 else 32
@@ -319,17 +367,25 @@ class BaseSystem:
                         "position": pos,
                         "text": content,
                     }
-                    self.segments.append(record)
-                    self.segment_lookup[seg_id] = record
+                    segments.append(record)
+                    segment_lookup[seg_id] = record
                     collected.append(record)
                 if rid:
-                    self.review_segments[rid] = collected
+                    review_segments[rid] = list(collected)
                 if item_id:
-                    existing = self.item_segments.get(item_id)
+                    existing = item_segments.get(item_id)
                     if existing is None:
                         existing = []
-                        self.item_segments[item_id] = existing
+                        item_segments[item_id] = existing
                     existing.extend(collected)
+        result = {
+            "segments": segments,
+            "segment_lookup": segment_lookup,
+            "review_segments": review_segments,
+            "item_segments": item_segments,
+        }
+        self._apply_segment_data(result)
+        return result
 
     def get_review_segments(self, review_id):
         return self.review_segments.get(review_id, [])
