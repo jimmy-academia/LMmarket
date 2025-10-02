@@ -3,7 +3,7 @@ from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
 from llm import query_llm, safe_json_parse
 
-KEYWORD_PROMPT = """You are an expert retrieval strategist helping with restaurant review search.\nUser request: {request_text}\nSummary of previous retrieval insights: {previous_summary}\nPropose focused search keywords that can retrieve better supporting evidence.\nReturn strict JSON with keys: keywords (array of 1-4 short keywords or phrases) and reasoning (one sentence describing why they were chosen)."""
+KEYWORD_PROMPT = """You are an expert retrieval strategist helping with restaurant review search.\nUser request: {request_text}\nPrevious keyword attempts: {previous_keywords}\nRecent retrieval takeaway: {retrieval_summary}\nReflection from the last step: {previous_reasoning}\nGuidance to follow now: {previous_summary}\nCompose fresh, focused search keywords that build on what has been learned while addressing the new guidance.\nReturn strict JSON with keys: keywords (array of 1-4 short keywords or phrases) and reasoning (one sentence describing why they were chosen)."""
 
 REVIEW_PROMPT = """You are analyzing retrieval results for an iterative search refinement process.\nUser request: {request_text}\nSearch query that was just executed: {search_query}\nTop retrieval results:\n{result_block}\nWrite a short reflection capturing what these results reveal and how to adjust the next search direction.\nReturn strict JSON with keys: reasoning (2-3 sentences summarizing takeaways) and guidance (one sentence describing what to focus on next)."""
 
@@ -43,18 +43,10 @@ class ReactRetrievalBaseline(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
         self.react_iterations = 5
-        model_name = getattr(args, "react_model", "gpt-4.1-mini")
+        self.react_model = "gpt-5-nano"
         temperature = getattr(args, "react_temperature", 0)
-        self.react_model = model_name
         self.react_temperature = temperature
-        retriever = getattr(args, "react_retriever", "bm25")
-        if isinstance(retriever, str):
-            retriever = retriever.strip().lower()
-        else:
-            retriever = "bm25"
-        if retriever not in {"bm25", "dense"}:
-            retriever = "bm25"
-        self.react_retriever = retriever
+        self.retriever = "sparse"
         summary_k = getattr(args, "react_summary_k", 3)
         if not isinstance(summary_k, int) or summary_k <= 0:
             summary_k = 3
@@ -70,16 +62,26 @@ class ReactRetrievalBaseline(BaseSystem):
         if not isinstance(limit, int) or limit <= 0:
             limit = self.default_top_k
         previous_summary = "No prior retrieval. Start from the core intent."
+        previous_reasoning = "No reflection yet; focus on the base request."
+        previous_keywords = []
+        retrieval_summary = "Retrieval has not been executed yet."
         last_results = []
         for idx in range(self.react_iterations):
-            keywords, planning_reasoning = self._propose_keywords(query_text, previous_summary)
+            keywords, planning_reasoning = self._propose_keywords(
+                query_text,
+                previous_summary,
+                previous_keywords,
+                retrieval_summary,
+                previous_reasoning,
+            )
             search_query = self._compose_search_query(query_text, keywords)
             results = self._run_retrieval(search_query, city, limit)
             last_results = results
             display = results[:self.react_summary_k]
+            display_summary = self._summarize_results(display)
             print(f"[ReAct][Iter {idx + 1}] keywords: {keywords}")
-            print(f"[ReAct][Iter {idx + 1}] retriever={self.react_retriever} query=\"{search_query}\"")
-            print(f"[ReAct][Iter {idx + 1}] retrieved: {self._summarize_results(display)}")
+            print(f"[ReAct][Iter {idx + 1}] retriever={self.retriever} query=\"{search_query}\"")
+            print(f"[ReAct][Iter {idx + 1}] retrieved: {display_summary}")
             review = self._review_results(query_text, search_query, display)
             reasoning_text = review.get("reasoning") if isinstance(review, dict) else None
             guidance_text = review.get("guidance") if isinstance(review, dict) else None
@@ -93,6 +95,9 @@ class ReactRetrievalBaseline(BaseSystem):
                 previous_summary = reasoning_text
             else:
                 previous_summary = planning_reasoning
+            previous_keywords = keywords
+            previous_reasoning = reasoning_text if reasoning_text else planning_reasoning
+            retrieval_summary = display_summary if display_summary else "No results were returned."
         return last_results
 
     def _extract_query(self, request):
@@ -109,8 +114,17 @@ class ReactRetrievalBaseline(BaseSystem):
                 return stripped
         return ""
 
-    def _propose_keywords(self, request_text, previous_summary):
-        prompt = KEYWORD_PROMPT.format(request_text=request_text, previous_summary=previous_summary)
+    def _propose_keywords(self, request_text, previous_summary, previous_keywords, retrieval_summary, previous_reasoning):
+        keyword_text = ", ".join(previous_keywords) if previous_keywords else "None (first iteration)"
+        retrieval_text = retrieval_summary if retrieval_summary else "No retrieval observations available."
+        reasoning_text = previous_reasoning if previous_reasoning else previous_summary
+        prompt = KEYWORD_PROMPT.format(
+            request_text=request_text,
+            previous_summary=previous_summary,
+            previous_keywords=keyword_text,
+            retrieval_summary=retrieval_text,
+            previous_reasoning=reasoning_text,
+        )
         raw = query_llm(
             prompt,
             model=self.react_model,
@@ -151,7 +165,7 @@ class ReactRetrievalBaseline(BaseSystem):
     def _run_retrieval(self, search_query, city, limit):
         if not search_query:
             return []
-        if self.react_retriever == "dense":
+        if self.retriever == "dense":
             helper = self._ensure_dense_helper()
             if helper:
                 return helper.recommend(search_query, city=city, top_k=limit)
