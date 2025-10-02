@@ -9,6 +9,7 @@ main.py
 2. application stage
     - todo
 '''
+import json
 import numpy as np
 from pathlib import Path
 
@@ -31,6 +32,27 @@ def main():
     parser.add_argument('--bm25_top_m', type=int, default=3)
     # benchmark
     parser.add_argument('--num_test', type=int, default=2)
+    parser.add_argument('--div_name', type=str, default=None)
+    parser.add_argument('--segment_candidate_segments', type=int, default=50)
+    parser.add_argument('--segment_top_m', type=int, default=3)
+    parser.add_argument('--segment_encode_batch_size', type=int, default=8)
+    parser.add_argument('--segment_train_samples', type=int, default=64)
+    parser.add_argument('--segment_learning_rate', type=float, default=2e-5)
+    parser.add_argument('--segment_checkpoint', type=str, default=None)
+    parser.add_argument('--segment_model_config', type=json.loads, default=None)
+    parser.add_argument('--segment_backbone', default=None)
+    parser.add_argument('--segment_pooling', default=None)
+    parser.add_argument('--segment_hidden_dim', type=int, default=None)
+    parser.add_argument('--segment_aspect_dim', type=int, default=None)
+    parser.add_argument('--segment_sentiment_dim', type=int, default=None)
+    parser.add_argument('--segment_lambda_aspect', type=float, default=None)
+    parser.add_argument('--segment_lambda_sentiment', type=float, default=None)
+    parser.add_argument('--segment_aspect_temperature', type=float, default=None)
+    parser.add_argument('--segment_sentiment_temperature', type=float, default=None)
+    parser.add_argument('--segment_sentiment_loss', default=None)
+    parser.add_argument('--segment_sentiment_margin', type=float, default=None)
+    parser.add_argument('--segment_curvature', type=float, default=None)
+    parser.add_argument('--segment_max_length', type=int, default=None)
     args = parser.parse_args()
 
     new_todo = """
