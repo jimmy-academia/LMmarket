@@ -25,10 +25,16 @@ class Backbone:
         self.encoder = encoder
 
 
-class HFBackbone(Backbone):
+class BertBackbone(Backbone):
     def __init__(self, name, torch_dtype=None, attn_impl=None):
         tok = AutoTokenizer.from_pretrained("bert-base-uncased")
         enc = AutoModel.from_pretrained("bert-base-uncased", torch_dtype=torch_dtype, attn_implementation=attn_impl)
+        super().__init__(tok, enc)
+
+class MiniBackbone(Backbone):
+    def __init__(self, torch_dtype):
+        tok = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+        enc = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2", torch_dtype=torch_dtype)
         super().__init__(tok, enc)
 
 
@@ -57,7 +63,7 @@ class SegmentEmbeddingModel(nn.Module):
         self.curvature = 1.0
         self.eps = 1e-5
 
-        self.backbone_type = 'sentence' # "sentence" | "HF"
+        self.backbone_type = 'mini' # "sentence" | "bert" | "mini"
 
         # ---- Device / perf knobs ----
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -74,9 +80,11 @@ class SegmentEmbeddingModel(nn.Module):
         # ---- Tokenizer / Encoder (FlashAttention2 or SDPA) ----
         if self.backbone_type == "sentence":
             backbone = SentenceTransformerBackbone(self.device)
-        else:
+        elif self.backbone_type == "bert":
             attn_impl = "flash_attention_2" if (self.device.type == "cuda" and is_flash_attn_2_available()) else "sdpa"
-            backbone = HFBackbone(name, torch_dtype=torch_dtype, attn_impl=attn_impl)
+            backbone = BertBackbone(name, torch_dtype=torch_dtype, attn_impl=attn_impl)
+        elif self.backbone_type == "mini":
+            backbone = MiniBackbone(torch_dtype)
         self.backbone = backbone
         self.encoder = backbone.encoder
         self.tokenizer = backbone.tokenizer
