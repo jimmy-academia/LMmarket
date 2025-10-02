@@ -206,6 +206,7 @@ class HyperbolicSegmentSystem(BaseSystem):
         self.encode_batch_size = 64
         self.training_samples = 0
         self.learning_rate = 2e-5
+        self.training_epochs = 1
 
         self.segment_encoder = SegmentEmbeddingModel()
         if args.device:
@@ -215,7 +216,11 @@ class HyperbolicSegmentSystem(BaseSystem):
 
         self.model_ready = False
         self.index = None
+        self.llm_silver_aspect = []
+        self.llm_bronze_aspect = []
+        self._segment_text_cache = {}
         self._ensure_model_ready()
+        self._train_with_segments()
 
     # ------- Recommend (global index; city arg ignored) -------
     def recommend(self, request, city=None, top_k=None):
@@ -285,15 +290,20 @@ class HyperbolicSegmentSystem(BaseSystem):
 
     # ------- Train (kept minimal; off by default) -------
     def _train_with_segments(self):
-        if self.training_samples <= 0:
+        llm_pairs = self._gather_llm_aspect_pairs()
+        if self.training_samples <= 0 and not llm_pairs.get("all"):
             return
-        pairs = self._collect_training_pairs(self.training_samples)
-        if not pairs:
-            return
-        anchors = [self._normalize_text(a.get("text")) for a, _ in pairs]
-        positives = [self._normalize_text(p.get("text")) for _, p in pairs]
-        anchors = [t for t in anchors if t]
-        positives = [t for t in positives if t]
+        pairs = self._collect_training_pairs(self.training_samples) if self.training_samples > 0 else []
+        anchors, positives = [], []
+        for anchor, positive in pairs:
+            a_text = self._normalize_text(anchor.get("text"))
+            b_text = self._normalize_text(positive.get("text"))
+            if a_text and b_text:
+                anchors.append(a_text)
+                positives.append(b_text)
+        for a_text, b_text in llm_pairs.get("all", []):
+            anchors.append(a_text)
+            positives.append(b_text)
         if not anchors:
             return
 
@@ -301,20 +311,116 @@ class HyperbolicSegmentSystem(BaseSystem):
         negatives = negatives[:len(anchors)]
         tok = self.segment_encoder.tokenizer
         dev = self.segment_encoder.device
-
-        self.segment_encoder.train()
         opt = torch.optim.Adam(self.segment_encoder.parameters(), lr=float(self.learning_rate))
+        epochs = self.training_epochs if self.training_epochs > 0 else 1
 
         A = {k: v.to(dev) for k, v in tok(anchors, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
         P = {k: v.to(dev) for k, v in tok(positives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
         N = {k: v.to(dev) for k, v in tok(negatives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
 
-        oA = self.segment_encoder.forward(A["input_ids"], A["attention_mask"])
-        oP = self.segment_encoder.forward(P["input_ids"], P["attention_mask"])
-        oN = self.segment_encoder.forward(N["input_ids"], N["attention_mask"])
+        if not llm_pairs.get("all"):
+            print("[train] llm audit pairs unavailable; distance tracking skipped.")
 
-        loss = self.segment_encoder.aspect_contrastive_loss(oA["z_asp"], oP["z_asp"].unsqueeze(1), oN["z_asp"].unsqueeze(1))
-        opt.zero_grad(); loss.backward(); opt.step()
+        for epoch in range(epochs):
+            before = self._distance_metrics(llm_pairs) if llm_pairs.get("all") else {}
+            self.segment_encoder.train()
+            oA = self.segment_encoder.forward(A["input_ids"], A["attention_mask"])
+            oP = self.segment_encoder.forward(P["input_ids"], P["attention_mask"])
+            oN = self.segment_encoder.forward(N["input_ids"], N["attention_mask"])
+            loss = self.segment_encoder.aspect_contrastive_loss(oA["z_asp"], oP["z_asp"].unsqueeze(1), oN["z_asp"].unsqueeze(1))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            self.segment_encoder.eval()
+            after = self._distance_metrics(llm_pairs) if llm_pairs.get("all") else {}
+            self._log_distance_progress(epoch, before, after)
+
+        self.segment_encoder.eval()
+
+    def _gather_llm_aspect_pairs(self):
+        silver = []
+        for entry in self.llm_silver_aspect:
+            a_text = self._resolve_segment_text(entry.get("anchor_segment"))
+            b_text = self._resolve_segment_text(entry.get("neighbor_segment"))
+            if a_text and b_text:
+                silver.append((a_text, b_text))
+        bronze = []
+        for entry in self.llm_bronze_aspect:
+            a_text = self._resolve_segment_text(entry.get("anchor_segment"))
+            b_text = self._resolve_segment_text(entry.get("neighbor_segment"))
+            if a_text and b_text:
+                bronze.append((a_text, b_text))
+        combined = silver + bronze
+        return {"silver": silver, "bronze": bronze, "all": combined}
+
+    def _resolve_segment_text(self, segment_id):
+        if not segment_id:
+            return ""
+        cached = self._segment_text_cache.get(segment_id)
+        if cached is not None:
+            return cached
+        text = ""
+        lookup = self.segment_lookup.get(segment_id)
+        if lookup:
+            text = self._normalize_text(lookup.get("text"))
+        if not text:
+            for group in self.item_segments.values():
+                for segment in group:
+                    if segment.get("segment_id") == segment_id:
+                        text = self._normalize_text(segment.get("text"))
+                        if text:
+                            break
+                if text:
+                    break
+        self._segment_text_cache[segment_id] = text
+        return text
+
+    def _distance_metrics(self, llm_pairs):
+        metrics = {}
+        pool = {}
+        ordered = []
+        for tier in ("silver", "bronze"):
+            for anchor, positive in llm_pairs.get(tier, []):
+                if anchor and anchor not in pool:
+                    pool[anchor] = len(ordered)
+                    ordered.append(anchor)
+                if positive and positive not in pool:
+                    pool[positive] = len(ordered)
+                    ordered.append(positive)
+        if not ordered:
+            return metrics
+        embeddings = self.segment_encoder.encode_texts(ordered, batch_size=self.encode_batch_size, logmap=False)
+        if not embeddings.numel():
+            return metrics
+        for tier, pairs in llm_pairs.items():
+            if not pairs:
+                continue
+            anchor_idx = torch.tensor([pool[a] for a, _ in pairs], dtype=torch.long)
+            positive_idx = torch.tensor([pool[b] for _, b in pairs], dtype=torch.long)
+            anchor_vecs = embeddings.index_select(0, anchor_idx)
+            positive_vecs = embeddings.index_select(0, positive_idx)
+            dists = self.segment_encoder.hyperbolic_distance(anchor_vecs, positive_vecs)
+            if dists.numel():
+                metrics[tier] = float(dists.mean().item())
+        return metrics
+
+    def _log_distance_progress(self, epoch, before, after):
+        if not before and not after:
+            return
+        pos = epoch + 1
+        for tier in ("silver", "bronze", "all"):
+            b_val = before.get(tier) if before else None
+            a_val = after.get(tier) if after else None
+            if b_val is None and a_val is None:
+                continue
+            parts = []
+            if b_val is not None:
+                parts.append(f"before={b_val:.4f}")
+            if a_val is not None:
+                parts.append(f"after={a_val:.4f}")
+            if b_val is not None and a_val is not None:
+                parts.append(f"delta={a_val - b_val:.4f}")
+            print(f"[train] epoch {pos} {tier} poincare {' '.join(parts)}")
 
     # ------- LLM thresholding (unchanged semantics) -------
     def calibrate_threshold_with_llm(self, candidates, provisional_tau=None, sample_size=200, target_precision_lb=0.9, sentiment_conf_min=0.7, double_judge=False, model="gpt-4.1-mini", confidence=0.95, max_iterations=6):
@@ -400,6 +506,10 @@ class HyperbolicSegmentSystem(BaseSystem):
         bronze_list = sorted(bronze_sent.values(), key=lambda r: (-r["confidence"], -abs(r["score"]), r["segment_id"]))
         silver_aspect.sort(key=lambda r: (-r["score"], r["anchor_segment"], r["neighbor_segment"]))
         bronze_aspect.sort(key=lambda r: (-r["score"], r["anchor_segment"], r["neighbor_segment"]))
+        self.llm_silver_aspect = list(silver_aspect)
+        self.llm_bronze_aspect = list(bronze_aspect)
+        self._segment_text_cache = {}
+        self._train_with_segments()
         return final_tau, silver_aspect, bronze_aspect, silver_list, bronze_list
 
     def _merge_sentiments(self, a, b):
