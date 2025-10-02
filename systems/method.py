@@ -7,6 +7,8 @@ from tqdm import tqdm
 from torch import nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
+from sentence_transformers import SentenceTransformer
+
 from transformers.utils import is_flash_attn_2_available
 
 from .base import BaseSystem
@@ -25,27 +27,22 @@ class Backbone:
 
 class HFBackbone(Backbone):
     def __init__(self, name, torch_dtype=None, attn_impl=None):
-        tok = AutoTokenizer.from_pretrained(name)
-        enc = AutoModel.from_pretrained(name, torch_dtype=torch_dtype, attn_implementation=attn_impl)
+        tok = AutoTokenizer.from_pretrained("bert-base-uncased")
+        enc = AutoModel.from_pretrained("bert-base-uncased", torch_dtype=torch_dtype, attn_implementation=attn_impl)
         super().__init__(tok, enc)
 
 
 class SentenceTransformerBackbone(Backbone):
-    def __init__(self, name=None, model=None):
-        if model is None:
-            from sentence_transformers import SentenceTransformer
-            model = SentenceTransformer(name)
+    def __init__(self, device):
+        model = SentenceTransformer("Alibaba-NLP/gte-large-en-v1.5", device=device, trust_remote_code=True)
         transformer = model[0]
         super().__init__(model.tokenizer, transformer.auto_model)
-        self.model = model
-
 
 class SegmentEmbeddingModel(nn.Module):
-    def __init__(self, backbone=None, backbone_config=None):
+    def __init__(self):
         super().__init__()
 
         # ---- Defaults (no external config) ----
-        default_backbone = "bert-base-uncased"
         self.pooling = "cls"
         self.max_length = 160
         self.hidden_dim = 512
@@ -60,6 +57,8 @@ class SegmentEmbeddingModel(nn.Module):
         self.curvature = 1.0
         self.eps = 1e-5
 
+        self.backbone_type = 'sentence' # "sentence" | "HF"
+
         # ---- Device / perf knobs ----
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -70,17 +69,14 @@ class SegmentEmbeddingModel(nn.Module):
             torch.bfloat16 if (self.device.type == "cuda" and torch.cuda.is_bf16_supported())
             else (torch.float16 if self.device.type == "cuda" else torch.float32)
         )
-        attn_impl = "flash_attention_2" if (self.device.type == "cuda" and is_flash_attn_2_available()) else "sdpa"
+        
 
         # ---- Tokenizer / Encoder (FlashAttention2 or SDPA) ----
-        cfg = backbone_config or {}
-        if backbone is None:
-            kind = cfg.get("type")
-            if kind == "sentence_transformer":
-                backbone = SentenceTransformerBackbone(cfg.get("name"), cfg.get("model"))
-            else:
-                name = cfg.get("name") or default_backbone
-                backbone = HFBackbone(name, torch_dtype=torch_dtype, attn_impl=attn_impl)
+        if self.backbone_type == "sentence":
+            backbone = SentenceTransformerBackbone(self.device)
+        else:
+            attn_impl = "flash_attention_2" if (self.device.type == "cuda" and is_flash_attn_2_available()) else "sdpa"
+            backbone = HFBackbone(name, torch_dtype=torch_dtype, attn_impl=attn_impl)
         self.backbone = backbone
         self.encoder = backbone.encoder
         self.tokenizer = backbone.tokenizer
