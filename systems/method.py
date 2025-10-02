@@ -17,12 +17,35 @@ from llm import run_llm_batch
 # Model
 # =========================
 
+class Backbone:
+    def __init__(self, tokenizer, encoder):
+        self.tokenizer = tokenizer
+        self.encoder = encoder
+
+
+class HFBackbone(Backbone):
+    def __init__(self, name, torch_dtype=None, attn_impl=None):
+        tok = AutoTokenizer.from_pretrained(name)
+        enc = AutoModel.from_pretrained(name, torch_dtype=torch_dtype, attn_implementation=attn_impl)
+        super().__init__(tok, enc)
+
+
+class SentenceTransformerBackbone(Backbone):
+    def __init__(self, name=None, model=None):
+        if model is None:
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer(name)
+        transformer = model[0]
+        super().__init__(model.tokenizer, transformer.auto_model)
+        self.model = model
+
+
 class SegmentEmbeddingModel(nn.Module):
-    def __init__(self):
+    def __init__(self, backbone=None, backbone_config=None):
         super().__init__()
 
         # ---- Defaults (no external config) ----
-        backbone = "bert-base-uncased"
+        default_backbone = "bert-base-uncased"
         self.pooling = "cls"
         self.max_length = 160
         self.hidden_dim = 512
@@ -50,12 +73,17 @@ class SegmentEmbeddingModel(nn.Module):
         attn_impl = "flash_attention_2" if (self.device.type == "cuda" and is_flash_attn_2_available()) else "sdpa"
 
         # ---- Tokenizer / Encoder (FlashAttention2 or SDPA) ----
-        self.tokenizer = AutoTokenizer.from_pretrained(backbone)
-        self.encoder = AutoModel.from_pretrained(
-            backbone,
-            torch_dtype=torch_dtype,
-            attn_implementation=attn_impl,
-        )
+        cfg = backbone_config or {}
+        if backbone is None:
+            kind = cfg.get("type")
+            if kind == "sentence_transformer":
+                backbone = SentenceTransformerBackbone(cfg.get("name"), cfg.get("model"))
+            else:
+                name = cfg.get("name") or default_backbone
+                backbone = HFBackbone(name, torch_dtype=torch_dtype, attn_impl=attn_impl)
+        self.backbone = backbone
+        self.encoder = backbone.encoder
+        self.tokenizer = backbone.tokenizer
 
         enc_dim = self.encoder.config.hidden_size
         self.trunk = nn.Sequential(
@@ -68,6 +96,7 @@ class SegmentEmbeddingModel(nn.Module):
         self.sentiment_head = nn.Linear(self.hidden_dim, self.sentiment_dim)
 
         self.to(self.device)
+        self.backbone.encoder = self.encoder
 
     def forward(self, input_ids, attention_mask):
         out = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
@@ -121,7 +150,7 @@ class SegmentEmbeddingModel(nn.Module):
         self.eval()
         for i in tqdm(range(0, len(texts), bs), ncols=88, desc="encode_texts"):
             batch = texts[i:i + bs]
-            toks = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
+            toks = self.backbone.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
             toks = {k: v.to(self.device) for k, v in toks.items()}
             with torch.inference_mode(), torch.cuda.amp.autocast(enabled=self.device.type=="cuda",
                                                                  dtype=(torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)):
@@ -321,7 +350,7 @@ class HyperbolicSegmentSystem(BaseSystem):
 
         negatives = positives[1:] + positives[:1]
         negatives = negatives[:len(anchors)]
-        tok = self.segment_encoder.tokenizer
+        tok = self.segment_encoder.backbone.tokenizer
         dev = self.segment_encoder.device
         opt = torch.optim.Adam(self.segment_encoder.parameters(), lr=float(self.learning_rate))
         epochs = self.training_epochs if self.training_epochs > 0 else 1
