@@ -7,7 +7,7 @@ from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj
 
 
-def _parse_cli():
+def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dset', default='yelp')
     parser.add_argument('--system', default='react')
@@ -16,6 +16,7 @@ def _parse_cli():
     parser.add_argument('--top_k', type=int, default=5)
     parser.add_argument('--retrieve_k', type=int, default=500)
     parser.add_argument('--bm25_top_m', type=int, default=3)
+    parser.add_argument('--device', type=int, default = 0)
     return parser.parse_args()
 
 
@@ -32,22 +33,22 @@ def _seed_defaults(args):
     args.faiss_topk = 256
     args.segment_temperature = 0.1
 
+def _resolve_args(args):
+    args.cache_dir = Path(args.cache_dir)
+    args.cache_dir.mkdir(exist_ok=True)
 
-def _resolve_cache_dir(raw):
-    cache_dir = Path(raw)
-    cache_dir.mkdir(exist_ok=True)
-    return cache_dir
+    args.dset_root = Path(args.dset_root)
+    if args.dset_root.is_file():
+        args.dset_root = readf(args.dset_root).strip()
+    else:
+        print(f"Warning: place the dataset root dir in the path assigned to args.dset_root: {args.dset_root}")
 
+    if args.device > torch.cuda.device_count():
+        input(f'Warning: args.device {args.device} > device count {torch.cuda.device_count()}. Set to default index 0. Press anything to continue.')
+        args.device = 0
+    args.device = torch.device(f"cuda:{args.device}" if args.device >= 0 and torch.cuda.is_available() else "cpu")
 
-def _resolve_dset_root(raw):
-    path = Path(raw)
-    if path.is_file():
-        content = readf(path).strip()
-        if content:
-            return Path(content)
-        return path.parent
-    return path
-
+    return args 
 
 def _build_data(args):
     prepared = args.cache_dir / f'prepared_{args.dset}_data.json'
@@ -57,13 +58,11 @@ def _build_data(args):
     data['test'] = loadj('data/test_data.json')
     return data
 
-
 def _announce_city(system):
     city = system.default_city
     if city:
         print(f"[main] >>> default city set to '{city}'")
     return city
-
 
 def _evaluate(system, args, city):
     if city:
@@ -72,12 +71,10 @@ def _evaluate(system, args, city):
     else:
         print('[main] >>> no city data available; skipping evaluation.')
 
-
 def main():
-    args = _parse_cli()
+    args = get_arguments()
     _seed_defaults(args)
-    args.cache_dir = _resolve_cache_dir(args.cache_dir)
-    args.dset_root = _resolve_dset_root(args.dset_root)
+    args = _resolve_args(args)
     data = _build_data(args)
     system = build_system(args, data)
     city = _announce_city(system)
