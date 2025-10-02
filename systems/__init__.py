@@ -1,7 +1,7 @@
 from .method import HyperbolicSegmentSystem
 from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
-
+from .react import ReactRetrievalBaseline
 
 def build_system(args, data):
     if args.system == 'sparse':
@@ -10,6 +10,9 @@ def build_system(args, data):
     if args.system == 'dense':
         print('[systems] >>> operating dense retrieval baseline')
         return DenseRetrieverBaseline(args, data)
+    if args.system == 'react':
+        print('[systems] >>> operating react retrieval baseline')
+        return ReactRetrievalBaseline(args, data)
     if args.system == 'method':
         print('[systems] >>> operating hyperbolic segment method (mine)')
         return HyperbolicSegmentSystem(args, data)

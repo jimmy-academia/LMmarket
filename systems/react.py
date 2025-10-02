@@ -42,10 +42,7 @@ REVIEW_JSON_SCHEMA = {
 class ReactRetrievalBaseline(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
-        iterations = getattr(args, "react_iterations", 5)
-        if not isinstance(iterations, int) or iterations <= 0:
-            iterations = 5
-        self.react_iterations = iterations
+        self.react_iterations = 5
         model_name = getattr(args, "react_model", "gpt-4.1-mini")
         temperature = getattr(args, "react_temperature", 0)
         self.react_model = model_name

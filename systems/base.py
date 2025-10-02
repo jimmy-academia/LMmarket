@@ -48,7 +48,6 @@ class BaseSystem:
 
         symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
         self.symspell = load_or_build(symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
-        self.symspell = self._build_symspell(self.all_reviews)
         self.segment_model = None
         segment_path = args.cache_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, self._segment_reviews, self.all_reviews)
@@ -238,6 +237,9 @@ class BaseSystem:
                 if short_excerpt:
                     line += f" — {short_excerpt}"
                 print(line)
+
+            print('pause after 1')
+            break
 
     def _collect_all_reviews(self):
         rows = []
