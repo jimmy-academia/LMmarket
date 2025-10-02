@@ -87,21 +87,11 @@ class BaseSystem:
         return self.data.get(key)
 
     def _count_city_items(self, payload):
-        items = payload.get("ITEMS") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            return 0
+        items = payload.get("ITEMS")
         if isinstance(items, dict):
             return len(items)
-        reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
-        if isinstance(reviews, list):
-            seen = set()
-            for entry in reviews:
-                if not isinstance(entry, dict):
-                    continue
-                item_id = entry.get("item_id")
-                if not item_id:
-                    item_id = entry.get("business_id")
-                if item_id:
-                    seen.add(item_id)
-            return len(seen)
         return 0
 
     def _normalize_request(self, entry, index, group):
@@ -350,15 +340,13 @@ class BaseSystem:
             for review, pieces in zip(batch, splits):
                 rid = review.get("review_id")
                 item_id = review.get("item_id")
-                if not item_id:
-                    item_id = review.get("business_id")
                 user_id = review.get("user_id")
                 collected = []
                 for pos, segment in enumerate(pieces):
                     content = segment.strip()
                     if not content:
                         continue
-                    seg_id = f"{rid}::{pos}" if rid else f"seg::{len(self.segments)}"
+                    seg_id = f"{rid}::{pos}" if rid else f"seg::{len(segments)}"
                     record = {
                         "segment_id": seg_id,
                         "review_id": rid,

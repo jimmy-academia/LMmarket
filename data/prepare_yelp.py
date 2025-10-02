@@ -36,29 +36,11 @@ def prepare_yelp_data(dset_root):
 
     biz_to_city = {bid: city for city, biz_map in city_restaurants.items() for bid in biz_map.keys()}
 
-    entry_by_city, users, user_city_counts, item_by_city = load_entries(review_file, tip_file, biz_to_city)
+    entry_by_city, users, user_city_counts, _ = load_entries(review_file, tip_file, biz_to_city)
     user_by_city = filter_user(users, user_city_counts)
-
-    entry_by_city = {c: v for c, v in entry_by_city.items()}
-    item_by_city  = {c: dict(b) for c, b in item_by_city.items()}
-    user_by_city  = {c: v for c, v in user_by_city.items()}
-
     info_by_city = build_info_by_city(city_restaurants)
 
-    cities = set()
-    for mapping in (user_by_city, item_by_city, entry_by_city, info_by_city):
-        cities.update(mapping.keys())
-
-    data = {}
-    for city in cities:
-        data[city] = {
-            "USERS": user_by_city[city] if city in user_by_city else {},
-            "ITEMS": item_by_city[city] if city in item_by_city else {},
-            "REVIEWS": entry_by_city[city] if city in entry_by_city else [],
-            "INFO": info_by_city[city] if city in info_by_city else {},
-        }
-
-    return data
+    return build_city_payloads(entry_by_city, user_by_city, info_by_city)
 
     # return {"USERS": user_by_city, "ITEMS": item_by_city, "REVIEWS": entry_by_city, "INFO": info_by_city}
 
@@ -74,9 +56,20 @@ def load_restaurants(business_file):
     with open(business_file, encoding="utf-8") as f:
         for line in f:
             biz = json.loads(line)
-            if biz.get("categories") and "restaurant" in biz["categories"].lower() and biz["address"]:
-                if biz.get("review_count", 0) > MIN_REVIEWS_PER_RESTAURANT:
-                    restaurants[biz["business_id"]] = biz
+            categories = biz.get("categories")
+            if not categories or "restaurant" not in categories.lower():
+                continue
+            address = biz.get("address")
+            if not address:
+                continue
+            review_count = biz.get("review_count", 0)
+            if review_count <= MIN_REVIEWS_PER_RESTAURANT:
+                continue
+            latitude = biz.get("latitude")
+            longitude = biz.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+            restaurants[biz["business_id"]] = biz
     return restaurants
 
 def filter_cities(restaurants):
@@ -104,27 +97,27 @@ def load_entries(review_file, tip_file, biz_to_city):
             bid = obj["business_id"]
             if bid in biz_to_city:
                 text = obj.get("text", "")
-                if len(text) > MIN_TEXT_LEN:
-                    uid = obj["user_id"]
-                    city = biz_to_city[bid]
-                    if kind == "review":
-                        rid = obj["review_id"]
-                        # text = f'|{obj.get("stars", "?")} stars| ' + text
-                    else:  # tip
-                        tip_id += 1
-                        rid = f"tip_{tip_id}"
+                if len(text) <= MIN_TEXT_LEN:
+                    continue
+                uid = obj["user_id"]
+                city = biz_to_city[bid]
+                if kind == "review":
+                    rid = obj["review_id"]
+                else:
+                    tip_id += 1
+                    rid = f"tip_{tip_id}"
 
-                    row = {
-                        "review_id": rid,
-                        "user_id": uid,
-                        "item_id": bid, # align to item_id
-                        "text": text,
-                        "kind": kind,
-                    }
-                    entry_by_city[city].append(row)
-                    users[uid].append(rid)
-                    item_by_city[city][bid].append(rid)
-                    user_city_counts[uid][city] += 1
+                row = {
+                    "review_id": rid,
+                    "user_id": uid,
+                    "item_id": bid,
+                    "text": text,
+                    "kind": kind,
+                }
+                entry_by_city[city].append(row)
+                users[uid].append(rid)
+                item_by_city[city][bid].append(rid)
+                user_city_counts[uid][city] += 1
 
     return entry_by_city, users, user_city_counts, item_by_city
 
@@ -163,6 +156,106 @@ def build_info_by_city(city_restaurants):
         for bid, biz in biz_map.items():
             info_by_city[city][bid] = _biz_info(biz)
     return dict(info_by_city)
+
+
+def build_city_payloads(entry_by_city, user_by_city, info_by_city):
+    data = {}
+    for city, entries in entry_by_city.items():
+        city_users = user_by_city[city]
+        assert isinstance(city_users, dict)
+        assert city in info_by_city
+        city_info = info_by_city[city]
+        reviews = []
+        review_ids = []
+        items = {}
+        for entry in entries:
+            rid = entry["review_id"]
+            uid = entry["user_id"]
+            item_id = entry["item_id"]
+            text = entry["text"].strip()
+            assert text
+            record = {
+                "review_id": rid,
+                "user_id": uid,
+                "item_id": item_id,
+                "text": text,
+                "kind": entry["kind"],
+            }
+            reviews.append(record)
+            review_ids.append(rid)
+            items.setdefault(item_id, []).append(rid)
+
+        review_id_set = set(review_ids)
+        users = {}
+        for uid, rids in city_users.items():
+            cleaned = [rid for rid in rids if rid in review_id_set]
+            assert cleaned
+            users[uid] = cleaned
+
+        info = {}
+        for item_id in items.keys():
+            meta = dict(city_info[item_id])
+            coords = meta["coords"]
+            lat = float(coords[0])
+            lon = float(coords[1])
+            meta["coords"] = (lat, lon)
+            info[item_id] = meta
+
+        data[city] = {
+            "USERS": users,
+            "ITEMS": items,
+            "REVIEWS": reviews,
+            "INFO": info,
+        }
+    assert_city_payloads(data)
+    return data
+
+
+def assert_city_payloads(data):
+    assert isinstance(data, dict)
+    for city, payload in data.items():
+        assert isinstance(city, str) and city
+        assert isinstance(payload, dict)
+        reviews = payload["REVIEWS"]
+        users = payload["USERS"]
+        items = payload["ITEMS"]
+        info = payload["INFO"]
+        assert isinstance(reviews, list) and reviews
+        assert isinstance(users, dict)
+        assert isinstance(items, dict) and items
+        assert isinstance(info, dict) and info
+        review_ids = set()
+        for review in reviews:
+            assert isinstance(review, dict)
+            rid = review["review_id"]
+            uid = review["user_id"]
+            item_id = review["item_id"]
+            text = review["text"]
+            kind = review["kind"]
+            assert isinstance(rid, str) and rid
+            assert isinstance(uid, str) and uid
+            assert isinstance(item_id, str) and item_id
+            assert isinstance(text, str) and text
+            assert isinstance(kind, str) and kind
+            review_ids.add(rid)
+            assert rid in items[item_id]
+        for uid, rids in users.items():
+            assert isinstance(uid, str) and uid
+            assert isinstance(rids, list) and rids
+            for rid in rids:
+                assert rid in review_ids
+        for item_id, linked in items.items():
+            assert isinstance(item_id, str) and item_id
+            assert isinstance(linked, list) and linked
+            for rid in linked:
+                assert rid in review_ids
+            meta = info[item_id]
+            assert isinstance(meta, dict)
+            coords = meta["coords"]
+            assert isinstance(coords, tuple) and len(coords) == 2
+            lat, lon = coords
+            assert isinstance(lat, float)
+            assert isinstance(lon, float)
     
 
     

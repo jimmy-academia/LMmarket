@@ -23,7 +23,7 @@ class DenseRetrieverBaseline(BaseSystem):
         if key in self.city_cache:
             return self.city_cache[key]
         payload = self.get_city_data(key)
-        if not payload:
+        if not isinstance(payload, dict):
             self.city_cache[key] = None
             return None
         reviews = payload.get("REVIEWS")
@@ -39,8 +39,6 @@ class DenseRetrieverBaseline(BaseSystem):
                 continue
             rid = entry.get("review_id")
             item_id = entry.get("item_id")
-            if not item_id:
-                item_id = entry.get("business_id")
             text = entry.get("text")
             if not rid or not item_id or not text:
                 continue
