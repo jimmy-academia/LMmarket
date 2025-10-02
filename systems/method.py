@@ -12,32 +12,21 @@ from utils import load_or_build
 class HyperbolicSegmentSystem(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
-        self.segment_candidates = getattr(args, "segment_candidate_segments", 50)
-        if not isinstance(self.segment_candidates, int) or self.segment_candidates <= 0:
-            self.segment_candidates = 50
-        self.segment_top_m = getattr(args, "segment_top_m", 3)
-        if not isinstance(self.segment_top_m, int) or self.segment_top_m < 0:
-            self.segment_top_m = 3
-        self.encode_batch_size = getattr(args, "segment_encode_batch_size", 8)
-        if not isinstance(self.encode_batch_size, int) or self.encode_batch_size <= 0:
-            self.encode_batch_size = 8
-        self.training_samples = getattr(args, "segment_train_samples", 64)
-        if not isinstance(self.training_samples, int) or self.training_samples < 0:
-            self.training_samples = 0
-        self.learning_rate = getattr(args, "segment_learning_rate", 2e-5)
-        if not isinstance(self.learning_rate, float) and not isinstance(self.learning_rate, int):
-            self.learning_rate = 2e-5
+        self.segment_candidates = args.segment_candidate_segments
+        self.segment_top_m = args.segment_top_m
+        self.encode_batch_size = args.segment_encode_batch_size
+        self.training_samples = args.segment_train_samples
+        self.learning_rate = args.segment_learning_rate
         model_config = self._build_model_config(args)
         self.segment_encoder = SegmentEmbeddingModel(model_config)
-        cache_dir = getattr(self.args, "cache_dir", "cache")
-        self.cache_dir = Path(cache_dir) if not isinstance(cache_dir, Path) else cache_dir
+        self.cache_dir = args.cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        div_name = getattr(self.args, "div_name", getattr(self.args, "dset", "default"))
-        checkpoint = getattr(self.args, "segment_checkpoint", None)
+        div_value = args.div_name if args.div_name else args.dset
+        checkpoint = args.segment_checkpoint
         if checkpoint:
             self.segment_model_path = Path(checkpoint)
         else:
-            self.segment_model_path = self.cache_dir / f"segment_encoder_{div_name}.pt"
+            self.segment_model_path = self.cache_dir / f"segment_encoder_{div_value}.pt"
         self.segment_model_path.parent.mkdir(parents=True, exist_ok=True)
         self.model_ready = False
         self.city_indexes = {}
@@ -108,31 +97,37 @@ class HyperbolicSegmentSystem(BaseSystem):
 
     def _build_model_config(self, args):
         config = {}
-        raw = getattr(args, "segment_model_config", None)
-        if isinstance(raw, dict):
+        raw = args.segment_model_config
+        if raw:
             config.update(raw)
-        mapping = {
-            "segment_backbone": "backbone_name",
-            "segment_pooling": "pooling",
-            "segment_hidden_dim": "hidden_dim",
-            "segment_aspect_dim": "aspect_dim",
-            "segment_sentiment_dim": "sentiment_dim",
-            "segment_lambda_aspect": "lambda_aspect",
-            "segment_lambda_sentiment": "lambda_sentiment",
-            "segment_aspect_temperature": "aspect_temperature",
-            "segment_sentiment_temperature": "sentiment_temperature",
-            "segment_sentiment_loss": "sentiment_loss",
-            "segment_sentiment_margin": "sentiment_margin",
-            "segment_curvature": "curvature",
-            "segment_max_length": "max_length",
-        }
-        for attr, key in mapping.items():
-            value = getattr(args, attr, None)
-            if value is not None:
-                config[key] = value
-        device_value = getattr(args, "device", None)
-        if device_value is not None and "device" not in config:
-            config["device"] = device_value
+        if args.segment_backbone is not None:
+            config["backbone_name"] = args.segment_backbone
+        if args.segment_pooling is not None:
+            config["pooling"] = args.segment_pooling
+        if args.segment_hidden_dim is not None:
+            config["hidden_dim"] = args.segment_hidden_dim
+        if args.segment_aspect_dim is not None:
+            config["aspect_dim"] = args.segment_aspect_dim
+        if args.segment_sentiment_dim is not None:
+            config["sentiment_dim"] = args.segment_sentiment_dim
+        if args.segment_lambda_aspect is not None:
+            config["lambda_aspect"] = args.segment_lambda_aspect
+        if args.segment_lambda_sentiment is not None:
+            config["lambda_sentiment"] = args.segment_lambda_sentiment
+        if args.segment_aspect_temperature is not None:
+            config["aspect_temperature"] = args.segment_aspect_temperature
+        if args.segment_sentiment_temperature is not None:
+            config["sentiment_temperature"] = args.segment_sentiment_temperature
+        if args.segment_sentiment_loss is not None:
+            config["sentiment_loss"] = args.segment_sentiment_loss
+        if args.segment_sentiment_margin is not None:
+            config["sentiment_margin"] = args.segment_sentiment_margin
+        if args.segment_curvature is not None:
+            config["curvature"] = args.segment_curvature
+        if args.segment_max_length is not None:
+            config["max_length"] = args.segment_max_length
+        if args.device is not None and "device" not in config:
+            config["device"] = args.device
         return config
 
     def _ensure_model_ready(self):
