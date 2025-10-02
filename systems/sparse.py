@@ -144,27 +144,3 @@ class BM25Baseline(BaseSystem):
 
     def recommend(self, request, city=None, top_k=None):
         return self.rank_items(request, city=city, top_k=top_k)
-
-    def _normalize_text(self, text):
-        if not text:
-            return ""
-        collapsed = " ".join(str(text).split())
-        return collapsed.strip()
-
-    def _compose_excerpt(self, summaries):
-        if not summaries:
-            return ""
-        combined = " ".join(summaries)
-        max_len = 160
-        if len(combined) <= max_len:
-            return combined
-        trimmed = combined[:max_len].rstrip()
-        return f"{trimmed}…"
-
-    def _compose_explanation(self, summaries):
-        if not summaries:
-            return ""
-        parts = []
-        for idx, summary in enumerate(summaries, 1):
-            parts.append(f"{idx}) {summary}")
-        return " ".join(parts)

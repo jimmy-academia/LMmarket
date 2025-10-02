@@ -141,27 +141,3 @@ class DenseRetrieverBaseline(BaseSystem):
                 "full_explanation": full_explanation,
             })
         return formatted
-
-    def _normalize_text(self, text):
-        if not text:
-            return ""
-        collapsed = " ".join(str(text).split())
-        return collapsed.strip()
-
-    def _compose_excerpt(self, summaries):
-        if not summaries:
-            return ""
-        combined = " ".join(summaries)
-        max_len = 160
-        if len(combined) <= max_len:
-            return combined
-        trimmed = combined[:max_len].rstrip()
-        return f"{trimmed}…"
-
-    def _compose_explanation(self, summaries):
-        if not summaries:
-            return ""
-        parts = []
-        for idx, summary in enumerate(summaries, 1):
-            parts.append(f"{idx}) {summary}")
-        return " ".join(parts)
