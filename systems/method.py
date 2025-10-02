@@ -1,592 +1,550 @@
 import json
 import math
 import torch
-from pathlib import Path
 
 from .base import BaseSystem
-from networks.model import SegmentEmbeddingModel
 from llm import run_llm_batch
-from utils import load_or_build
+
+from torch import nn
+import torch.nn.functional as F
+from transformers import AutoModel, AutoTokenizer
+from tqdm import tqdm
 
 
+# =========================
+# Model
+# =========================
+class SegmentEmbeddingModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # ---- Fixed defaults (no config) ----
+        backbone = "bert-base-uncased"
+        self.pooling = "cls"
+        self.max_length = 160
+        self.hidden_dim = 512
+        self.aspect_dim = 64
+        self.sentiment_dim = 3
+        self.lambda_aspect = 1.0
+        self.lambda_sentiment = 1.0
+        self.aspect_temperature = 0.1
+        self.sentiment_temperature = 1.0
+        self.sentiment_loss_type = "ce"  # "ce" | "mse" | "margin"
+        self.sentiment_margin = 1.0
+        self.curvature = 1.0
+        self.eps = 1e-5
+
+        self.tokenizer = AutoTokenizer.from_pretrained(backbone)
+        self.encoder = AutoModel.from_pretrained(backbone)
+        enc_dim = self.encoder.config.hidden_size
+
+        self.trunk = nn.Sequential(
+            nn.Linear(enc_dim, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+        )
+        self.aspect_head = nn.Linear(self.hidden_dim, self.aspect_dim)
+        self.sentiment_head = nn.Linear(self.hidden_dim, self.sentiment_dim)
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = torch.device(device)
+        self.to(self.device)
+
+    def forward(self, input_ids, attention_mask):
+        out = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        if self.pooling == "mean":
+            m = attention_mask.unsqueeze(-1)
+            pooled = (out * m).sum(1) / m.sum(1).clamp(min=1.0)
+        else:
+            pooled = out[:, 0]
+        h = self.trunk(pooled)
+        z_asp = self.expmap0(self.aspect_head(h))
+        z_sent = self.sentiment_head(h)
+        return {"z_asp": z_asp, "z_sent": z_sent}
+
+    # ------- Losses -------
+    def aspect_contrastive_loss(self, anchor, positives, negatives=None, temperature=None):
+        t = temperature or self.aspect_temperature
+        anchor = self.proj(anchor).unsqueeze(1)          # [B,1,D]
+        if positives.ndim == 2: positives = positives.unsqueeze(1)
+        if negatives is not None and negatives.ndim == 2: negatives = negatives.unsqueeze(1)
+        pos_sim = torch.exp(-self.hyperbolic_distance(anchor, positives) / t).sum(1)
+        denom = pos_sim
+        if negatives is not None:
+            neg_sim = torch.exp(-self.hyperbolic_distance(anchor, negatives) / t).sum(1)
+            denom = denom + neg_sim
+        loss = -torch.log((pos_sim / denom.clamp(min=self.eps)).clamp(min=self.eps))
+        return loss.mean()
+
+    def sentiment_loss(self, pred, labels):
+        if self.sentiment_loss_type == "mse":
+            return F.mse_loss(pred, labels)
+        if self.sentiment_loss_type == "margin":
+            margin_term = self.sentiment_margin - labels.float() * pred.squeeze(-1)
+            return F.relu(margin_term).mean()
+        if pred.ndim == 1: pred = pred.unsqueeze(0)
+        return F.cross_entropy(pred, labels)
+
+    def compute_multi_task_loss(self, anchor, positives, negatives, sentiment_pred, sentiment_labels, lambda_aspect=None, lambda_sentiment=None):
+        la = self.lambda_aspect if lambda_aspect is None else lambda_aspect
+        ls = self.lambda_sentiment if lambda_sentiment is None else lambda_sentiment
+        return la * self.aspect_contrastive_loss(anchor, positives, negatives) + ls * self.sentiment_loss(sentiment_pred, sentiment_labels)
+
+    # ------- Encoders / helpers -------
+    def encode_texts(self, texts, batch_size=None, logmap=True, return_sentiment=False):
+        if not texts:
+            ea = torch.empty(0, self.aspect_dim)
+            if return_sentiment:
+                es = torch.empty(0, self.sentiment_dim)
+                return ea, es
+            return ea
+
+        bs = batch_size or len(texts)
+        asp_chunks, sent_chunks = [], []
+        self.eval()
+        for i in tqdm(range(0, len(texts), bs), ncols=88, desc="encode_texts"):
+            batch = texts[i:i + bs]
+            toks = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
+            toks = {k: v.to(self.device) for k, v in toks.items()}
+            with torch.no_grad():
+                o = self.forward(toks["input_ids"], toks["attention_mask"])
+            a = self.logmap0(o["z_asp"]) if logmap else o["z_asp"]
+            asp_chunks.append(a.cpu())
+            if return_sentiment:
+                sent_chunks.append(o["z_sent"].cpu())
+        A = torch.cat(asp_chunks, 0)
+        if return_sentiment:
+            S = torch.cat(sent_chunks, 0) if sent_chunks else torch.empty(0, self.sentiment_dim)
+            return A, S
+        return A
+
+    def get_aspect_embedding(self, text):
+        e = self.encode_texts([text], batch_size=1, logmap=True)
+        return e[0] if e.numel() else torch.empty(self.aspect_dim)
+
+    def get_sentiment_embedding(self, text):
+        _, s = self.encode_texts([text], batch_size=1, logmap=False, return_sentiment=True)
+        return s[0] if s.numel() else torch.empty(self.sentiment_dim)
+
+    def score_aspect(self, u, v):
+        u = torch.as_tensor(u, dtype=torch.float32)
+        v = torch.as_tensor(v, dtype=torch.float32)
+        d = self.hyperbolic_distance(self.expmap0(u), self.expmap0(v))
+        return d.squeeze().item()
+
+    # ------- Hyperbolic ops (Poincaré ball) -------
+    def logmap0(self, x):
+        x = self.proj(x)
+        n = x.norm(-1, keepdim=True).clamp(min=self.eps)
+        sc = math.sqrt(self.curvature)
+        return (2.0 * torch.atanh(n * sc) / (sc * n)) * x
+
+    def expmap0(self, v):
+        n = v.norm(-1, keepdim=True).clamp(min=self.eps)
+        sc = math.sqrt(self.curvature)
+        return self.proj(torch.tanh(n * sc / 2.0) * v / (n * sc))
+
+    def hyperbolic_distance(self, u, v):
+        u = self.proj(u); v = self.proj(v)
+        sqdist = self._sqnorm(u - v)
+        un = self._sqnorm(u); vn = self._sqnorm(v)
+        denom = (1.0 - un).clamp(min=self.eps) * (1.0 - vn).clamp(min=self.eps)
+        arg = (1.0 + 2.0 * sqdist / denom).clamp(min=1.0 + self.eps)
+        return torch.acosh(arg).squeeze(-1)
+
+    def mobius_add(self, x, y):
+        c = self.curvature
+        x2 = self._sqnorm(x); y2 = self._sqnorm(y)
+        xy = (x * y).sum(-1, keepdim=True)
+        num = (1 + 2 * c * xy + c * y2) * x + (1 - c * x2) * y
+        den = 1 + 2 * c * xy + c * c * x2 * y2
+        return self.proj(num / den.clamp(min=self.eps))
+
+    def proj(self, x):
+        max_norm = 1 - self.eps
+        n = x.norm(-1, keepdim=True)
+        f = torch.where(n >= max_norm, max_norm / n, torch.ones_like(n))
+        return x * f
+
+    def _sqnorm(self, x):
+        return (x * x).sum(-1, keepdim=True)
+
+    # ------- Train / Inference -------
+    def inference(self, batch, optimizer=None, sentiment_labels=None, aspect_positives=None, aspect_negatives=None, train=False):
+        ids = batch["input_ids"].to(self.device)
+        mask = batch["attention_mask"].to(self.device)
+        out = self.forward(ids, mask)
+        if not train:
+            return out
+
+        anchor = out["z_asp"]
+        pos = aspect_positives if aspect_positives is not None else anchor.unsqueeze(1)
+        neg = aspect_negatives
+        asp_loss = self.aspect_contrastive_loss(anchor, pos, neg)
+        sent_loss = self.sentiment_loss(out["z_sent"], sentiment_labels.to(self.device)) if sentiment_labels is not None else torch.tensor(0.0, device=self.device)
+
+        total = self.lambda_aspect * asp_loss + self.lambda_sentiment * sent_loss
+        if optimizer is not None:
+            optimizer.zero_grad()
+            total.backward()
+            optimizer.step()
+
+        return {"loss": total.detach(), "aspect_loss": asp_loss.detach(), "sentiment_loss": sent_loss.detach(), **out}
+
+
+# =========================
+# System
+# =========================
 class HyperbolicSegmentSystem(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
-        self.segment_candidates = args.segment_candidate_segments
-        self.segment_top_m = args.segment_top_m
-        self.encode_batch_size = args.segment_encode_batch_size
-        self.training_samples = args.segment_train_samples
-        self.learning_rate = args.segment_learning_rate
-        model_config = self._build_model_config(args)
-        self.segment_encoder = SegmentEmbeddingModel(model_config)
-        self.cache_dir = args.cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        div_value = args.div_name if args.div_name else args.dset
-        checkpoint = args.segment_checkpoint
-        if checkpoint:
-            self.segment_model_path = Path(checkpoint)
-        else:
-            self.segment_model_path = self.cache_dir / f"segment_encoder_{div_value}.pt"
-        self.segment_model_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # ---- fixed defaults (args only provides .device) ----
+        self.segment_candidates = 500
+        self.segment_top_m = 4
+        self.encode_batch_size = 64
+        self.training_samples = 0
+        self.learning_rate = 2e-5
+
+        self.segment_encoder = SegmentEmbeddingModel()
+        if args.device:
+            dev = torch.device(args.device)
+            self.segment_encoder.to(dev)
+            self.segment_encoder.device = dev
+
         self.model_ready = False
-        self.city_indexes = {}
+        self.index = None
         self._ensure_model_ready()
 
+    # ------- Recommend (global index; city arg ignored) -------
     def recommend(self, request, city=None, top_k=None):
-        print('in main method recommend')
         if not request:
             return []
         self._ensure_model_ready()
-        index = self._ensure_city_index(city)
+        index = self._ensure_index()
         if not index:
             return []
-        query_text = str(request).strip()
-        if not query_text:
+
+        q = str(request).strip()
+        if not q:
             return []
-        query_embed = self.segment_encoder.get_aspect_embedding(query_text)
-        if query_embed.numel() == 0:
+        q_emb = self.segment_encoder.get_aspect_embedding(q)
+        if not q_emb.numel():
             return []
-        query_ball = self.segment_encoder.expmap0(query_embed)
-        distances = self.segment_encoder.hyperbolic_distance(query_ball, index["ball"]).squeeze(-1)
-        if distances.numel() == 0:
+
+        q_ball = self.segment_encoder.expmap0(q_emb)
+        dists = self.segment_encoder.hyperbolic_distance(q_ball, index["ball"]).squeeze(-1)
+        if not dists.numel():
             return []
-        scores = 1.0 / (1.0 + distances)
-        candidate_limit = min(len(scores), self.segment_candidates)
-        if candidate_limit <= 0:
+
+        scores = 1.0 / (1.0 + dists)
+        limit = min(len(scores), self.segment_candidates)
+        if limit <= 0:
             return []
-        values, indices = torch.topk(scores, candidate_limit, largest=True)
-        aggregated = {}
-        for score, idx in zip(values.tolist(), indices.tolist()):
-            item_id = index["items"][idx]
-            if not item_id:
-                continue
-            segment = index["segments"][idx]
-            if not isinstance(segment, dict):
-                continue
-            bucket = aggregated.get(item_id)
-            if bucket is None:
-                bucket = []
-                aggregated[item_id] = bucket
-            bucket.append((float(score), float(distances[idx].item()), segment))
-        if not aggregated:
+
+        vals, idxs = torch.topk(scores, limit, largest=True)
+        grouped = {}
+        for sc, i in zip(vals.tolist(), idxs.tolist()):
+            it = index["items"][i]
+            seg = index["segments"][i]
+            grouped.setdefault(it, []).append((float(sc), float(dists[i].item()), seg))
+
+        if not grouped:
             return []
-        results = []
-        for item_id, entries in aggregated.items():
-            entries.sort(key=lambda row: (-row[0], row[1]))
-            selected = entries[:self.segment_top_m] if self.segment_top_m > 0 else entries
-            total_score = sum(row[0] for row in selected)
-            evidence = []
-            snippets = []
-            for score, dist, segment in selected:
-                seg_id = segment.get("segment_id")
-                if seg_id:
-                    evidence.append(seg_id)
-                snippet = self._normalize_text(segment.get("text"))
-                if snippet:
-                    snippets.append(snippet)
-            results.append({
-                "item_id": item_id,
-                "model_score": float(total_score),
-                "evidence": evidence,
-                "short_excerpt": self._compose_excerpt(snippets),
-                "full_explanation": self._compose_explanation(snippets),
+
+        res = []
+        for it, rows in grouped.items():
+            rows.sort(key=lambda r: (-r[0], r[1]))
+            keep = rows[:self.segment_top_m] if self.segment_top_m > 0 else rows
+            total = sum(r[0] for r in keep)
+            ev, snips = [], []
+            for sc, di, s in keep:
+                sid = s.get("segment_id")
+                if sid: ev.append(sid)
+                sn = self._normalize_text(s.get("text"))
+                if sn: snips.append(sn)
+            res.append({
+                "item_id": it,
+                "model_score": float(total),
+                "evidence": ev,
+                "short_excerpt": self._compose_excerpt(snips),
+                "full_explanation": self._compose_explanation(snips),
             })
-        results.sort(key=lambda entry: (-entry["model_score"], entry["item_id"]))
-        cutoff = top_k if isinstance(top_k, int) and top_k > 0 else self.default_top_k
-        return results[:cutoff] if cutoff and cutoff > 0 else results
 
-    def _build_model_config(self, args):
-        config = {}
-        raw = args.segment_model_config
-        if raw:
-            config.update(raw)
-        if args.segment_backbone is not None:
-            config["backbone_name"] = args.segment_backbone
-        if args.segment_pooling is not None:
-            config["pooling"] = args.segment_pooling
-        if args.segment_hidden_dim is not None:
-            config["hidden_dim"] = args.segment_hidden_dim
-        if args.segment_aspect_dim is not None:
-            config["aspect_dim"] = args.segment_aspect_dim
-        if args.segment_sentiment_dim is not None:
-            config["sentiment_dim"] = args.segment_sentiment_dim
-        if args.segment_lambda_aspect is not None:
-            config["lambda_aspect"] = args.segment_lambda_aspect
-        if args.segment_lambda_sentiment is not None:
-            config["lambda_sentiment"] = args.segment_lambda_sentiment
-        if args.segment_aspect_temperature is not None:
-            config["aspect_temperature"] = args.segment_aspect_temperature
-        if args.segment_sentiment_temperature is not None:
-            config["sentiment_temperature"] = args.segment_sentiment_temperature
-        if args.segment_sentiment_loss is not None:
-            config["sentiment_loss"] = args.segment_sentiment_loss
-        if args.segment_sentiment_margin is not None:
-            config["sentiment_margin"] = args.segment_sentiment_margin
-        if args.segment_curvature is not None:
-            config["curvature"] = args.segment_curvature
-        if args.segment_max_length is not None:
-            config["max_length"] = args.segment_max_length
-        if args.device is not None and "device" not in config:
-            config["device"] = args.device
-        return config
+        res.sort(key=lambda e: (-e["model_score"], e["item_id"]))
+        k = top_k or self.default_top_k
+        return res[:k] if k and k > 0 else res
 
+    # ------- Minimal readiness (no load/save plumbing) -------
     def _ensure_model_ready(self):
         if self.model_ready:
             return
-
-        def save_fn(path, state):
-            torch.save(state, path)
-
-        def load_fn(path):
-            return torch.load(path, map_location=self.segment_encoder.device)
-
-        def build_fn():
-            self._train_with_segments()
-            self.segment_encoder.eval()
-            return self.segment_encoder.state_dict()
-
-        state = load_or_build(self.segment_model_path, save_fn, load_fn, build_fn)
-        if isinstance(state, dict):
-            for key in ["model_state_dict", "state_dict", "model"]:
-                nested = state.get(key)
-                if isinstance(nested, dict):
-                    state = nested
-                    break
-            self.segment_encoder.load_state_dict(state, strict=False)
         self.segment_encoder.eval()
         self.model_ready = True
 
+    # ------- Train (kept minimal; off by default) -------
     def _train_with_segments(self):
-        print('method.py train with segments')
         if self.training_samples <= 0:
             return
         pairs = self._collect_training_pairs(self.training_samples)
         if not pairs:
             return
-        anchors = []
-        positives = []
-        for anchor_seg, positive_seg in pairs:
-            anchor_text = self._normalize_text(anchor_seg.get("text"))
-            positive_text = self._normalize_text(positive_seg.get("text"))
-            if not anchor_text or not positive_text:
-                continue
-            anchors.append(anchor_text)
-            positives.append(positive_text)
+        anchors = [self._normalize_text(a.get("text")) for a, _ in pairs]
+        positives = [self._normalize_text(p.get("text")) for _, p in pairs]
+        anchors = [t for t in anchors if t]
+        positives = [t for t in positives if t]
         if not anchors:
             return
-        negatives = positives[1:] + positives[:1]
-        if len(negatives) < len(anchors):
-            deficit = len(anchors) - len(negatives)
-            negatives.extend(anchors[:deficit])
-        negatives = negatives[:len(anchors)]
-        tokenizer = self.segment_encoder.tokenizer
-        device = self.segment_encoder.device
-        self.segment_encoder.train()
-        optimizer = torch.optim.Adam(self.segment_encoder.parameters(), lr=float(self.learning_rate))
-        anchor_tokens = tokenizer(anchors, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length)
-        positive_tokens = tokenizer(positives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length)
-        negative_tokens = tokenizer(negatives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length)
-        anchor_inputs = {key: value.to(device) for key, value in anchor_tokens.items()}
-        positive_inputs = {key: value.to(device) for key, value in positive_tokens.items()}
-        negative_inputs = {key: value.to(device) for key, value in negative_tokens.items()}
-        outputs_anchor = self.segment_encoder.forward(anchor_inputs["input_ids"], anchor_inputs["attention_mask"])
-        outputs_positive = self.segment_encoder.forward(positive_inputs["input_ids"], positive_inputs["attention_mask"])
-        outputs_negative = self.segment_encoder.forward(negative_inputs["input_ids"], negative_inputs["attention_mask"])
-        positives_tensor = outputs_positive["z_asp"].unsqueeze(1)
-        negatives_tensor = outputs_negative["z_asp"].unsqueeze(1)
-        loss = self.segment_encoder.aspect_contrastive_loss(outputs_anchor["z_asp"], positives_tensor, negatives_tensor)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
+        negatives = positives[1:] + positives[:1]
+        negatives = negatives[:len(anchors)]
+        tok = self.segment_encoder.tokenizer
+        dev = self.segment_encoder.device
+
+        self.segment_encoder.train()
+        opt = torch.optim.Adam(self.segment_encoder.parameters(), lr=float(self.learning_rate))
+
+        A = {k: v.to(dev) for k, v in tok(anchors, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
+        P = {k: v.to(dev) for k, v in tok(positives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
+        N = {k: v.to(dev) for k, v in tok(negatives, return_tensors="pt", padding=True, truncation=True, max_length=self.segment_encoder.max_length).items()}
+
+        oA = self.segment_encoder.forward(A["input_ids"], A["attention_mask"])
+        oP = self.segment_encoder.forward(P["input_ids"], P["attention_mask"])
+        oN = self.segment_encoder.forward(N["input_ids"], N["attention_mask"])
+
+        loss = self.segment_encoder.aspect_contrastive_loss(oA["z_asp"], oP["z_asp"].unsqueeze(1), oN["z_asp"].unsqueeze(1))
+        opt.zero_grad(); loss.backward(); opt.step()
+
+    # ------- LLM thresholding (unchanged semantics) -------
     def calibrate_threshold_with_llm(self, candidates, provisional_tau=None, sample_size=200, target_precision_lb=0.9, sentiment_conf_min=0.7, double_judge=False, model="gpt-4.1-mini", confidence=0.95, max_iterations=6):
         usable = []
-        for entry in candidates or []:
-            if not isinstance(entry, dict):
+        for e in candidates or []:
+            s = e.get("score")
+            a = e.get("anchor")
+            b = e.get("neighbor")
+            at = self._normalize_text(a.get("text")) if a else ""
+            bt = self._normalize_text(b.get("text")) if b else ""
+            if s is None or not at or not bt:
                 continue
-            score = entry.get("score")
-            if score is None:
-                score = entry.get("similarity")
-            if score is None:
-                continue
-            if not isinstance(score, (float, int)):
-                continue
-            anchor = entry.get("anchor") or entry.get("anchor_segment") or entry.get("segment_a") or {}
-            neighbor = entry.get("neighbor") or entry.get("neighbor_segment") or entry.get("segment_b") or {}
-            anchor_text = self._normalize_text(anchor.get("text"))
-            neighbor_text = self._normalize_text(neighbor.get("text"))
-            if not anchor_text or not neighbor_text:
-                continue
-            usable.append({
-                "score": float(score),
-                "anchor": anchor,
-                "neighbor": neighbor,
-                "anchor_text": anchor_text,
-                "neighbor_text": neighbor_text,
-            })
-        if not usable:
-            fallback_tau = float(provisional_tau) if isinstance(provisional_tau, (float, int)) else 0.0
-            return fallback_tau, [], [], [], []
-        scores = [entry["score"] for entry in usable]
-        min_score = min(scores)
-        max_score = max(scores)
-        if provisional_tau is None or not isinstance(provisional_tau, (float, int)):
-            provisional_tau = sum(scores) / len(scores)
-        provisional_tau = min(max(float(provisional_tau), min_score), max_score)
-        low = min_score
-        high = max_score
-        best_tau = None
-        audit_cache = {}
-        previous_tau = None
-        tau = provisional_tau
+            usable.append({"score": float(s), "anchor": a, "neighbor": b, "anchor_text": at, "neighbor_text": bt})
 
-        #### temp
-        max_iterations = 1
-        ###
-        for iteration in range(max_iterations):
-            if iteration > 0:
-                tau = (low + high) / 2.0
-            if previous_tau is not None and abs(tau - previous_tau) < 1e-4:
+        if not usable:
+            return float(provisional_tau or 0.0), [], [], [], []
+
+        scores = [u["score"] for u in usable]
+        lo, hi = min(scores), max(scores)
+        tau = float(provisional_tau) if provisional_tau is not None else sum(scores) / len(scores)
+        tau = min(max(tau, lo), hi)
+
+        best = None
+        cache = {}
+        prev = None
+
+        for _ in range(max_iterations):
+            if prev is not None and abs(tau - prev) < 1e-4:
                 break
-            previous_tau = tau
-            qualified = [entry for entry in usable if entry["score"] >= tau]
+            prev = tau
+
+            qualified = [u for u in usable if u["score"] >= tau]
             if not qualified:
-                high = tau
-                continue
-            qualified.sort(key=lambda entry: abs(entry["score"] - tau))
+                hi = tau; tau = (lo + hi) / 2.0; continue
+
+            qualified.sort(key=lambda x: abs(x["score"] - tau))
             sample = qualified[:sample_size] if len(qualified) > sample_size else qualified
-            audits = self._ensure_llm_audits(sample, audit_cache, model, double_judge)
-            positives = sum(1 for key in audits if audits[key]["aspect_same"])
-            total = len(audits)
-            if total == 0:
-                high = tau
-                continue
-            lb = self._wilson_lower_bound(positives, total, confidence)
+            audits = self._ensure_llm_audits(sample, cache, model, double_judge)
+
+            pos = sum(1 for k in audits if audits[k]["aspect_same"])
+            tot = len(audits)
+            if tot == 0:
+                hi = tau; tau = (lo + hi) / 2.0; continue
+
+            lb = self._wilson_lower_bound(pos, tot, confidence)
             if lb >= target_precision_lb:
-                best_tau = tau
-                high = tau
+                best = tau; hi = tau
             else:
-                low = tau
-        if best_tau is None:
-            best_tau = high
-        final_tau = max(min(best_tau, max_score), min_score)
-        eligible_pairs = [entry for entry in usable if entry["score"] >= final_tau]
-        self._ensure_llm_audits(eligible_pairs, audit_cache, model, double_judge)
-        silver_aspect = []
-        bronze_aspect = []
-        silver_sentiment = {}
-        bronze_sentiment = {}
-        for entry in eligible_pairs:
-            key = self._pair_key(entry)
-            audit = audit_cache.get(key)
-            anchor = entry["anchor"]
-            neighbor = entry["neighbor"]
-            anchor_id = self._segment_identifier(anchor, entry["anchor_text"])
-            neighbor_id = self._segment_identifier(neighbor, entry["neighbor_text"])
-            payload = {
-                "anchor_segment": anchor_id,
-                "neighbor_segment": neighbor_id,
-                "score": entry["score"],
-            }
+                lo = tau
+            tau = (lo + hi) / 2.0
+
+        final_tau = max(min(best if best is not None else hi, hi), lo)
+        elig = [u for u in usable if u["score"] >= final_tau]
+        self._ensure_llm_audits(elig, cache, model, double_judge)
+
+        silver_aspect, bronze_aspect = [], []
+        silver_sent, bronze_sent = {}, {}
+
+        for e in elig:
+            key = self._pair_key(e)
+            audit = cache.get(key)
+            a, b = e["anchor"], e["neighbor"]
+            aid = self._segment_identifier(a, e["anchor_text"])
+            bid = self._segment_identifier(b, e["neighbor_text"])
+            rec = {"anchor_segment": aid, "neighbor_segment": bid, "score": e["score"]}
+
             if audit and audit["aspect_same"]:
-                payload["aspect_label"] = audit.get("aspect_label")
-                silver_aspect.append(payload)
+                rec["aspect_label"] = audit.get("aspect_label")
+                silver_aspect.append(rec)
             else:
-                bronze_aspect.append(payload)
+                bronze_aspect.append(rec)
+
             if audit:
-                for idx, segment in enumerate((anchor, neighbor)):
-                    seg_id = self._segment_identifier(segment, entry["anchor_text"] if idx == 0 else entry["neighbor_text"])
-                    sentiment = audit["sentiments"][idx]
-                    if not seg_id or sentiment is None:
-                        continue
-                    container = silver_sentiment if sentiment["confidence"] >= sentiment_conf_min else bronze_sentiment
-                    existing = container.get(seg_id)
-                    enriched = {
-                        "segment_id": seg_id,
-                        "label": sentiment["label"],
-                        "score": sentiment["score"],
-                        "confidence": sentiment["confidence"],
-                        "source": "llm",
-                    }
-                    if existing:
-                        enriched = self._merge_sentiments(existing, enriched)
-                    container[seg_id] = enriched
-        silver_list = list(silver_sentiment.values())
-        bronze_list = list(bronze_sentiment.values())
-        silver_list.sort(key=lambda row: (-row["confidence"], -abs(row["score"]), row["segment_id"]))
-        bronze_list.sort(key=lambda row: (-row["confidence"], -abs(row["score"]), row["segment_id"]))
-        silver_aspect.sort(key=lambda row: (-row["score"], row["anchor_segment"], row["neighbor_segment"]))
-        bronze_aspect.sort(key=lambda row: (-row["score"], row["anchor_segment"], row["neighbor_segment"]))
+                sa, sb = audit["sentiments"]
+                if sa:
+                    cont = silver_sent if sa["confidence"] >= sentiment_conf_min else bronze_sent
+                    cont[aid] = self._merge_sentiments(cont.get(aid, {"segment_id": aid, "label": "NEU", "score": 0.0, "confidence": 0.0}), {"segment_id": aid, **sa})
+                if sb:
+                    cont = silver_sent if sb["confidence"] >= sentiment_conf_min else bronze_sent
+                    cont[bid] = self._merge_sentiments(cont.get(bid, {"segment_id": bid, "label": "NEU", "score": 0.0, "confidence": 0.0}), {"segment_id": bid, **sb})
+
+        silver_list = sorted(silver_sent.values(), key=lambda r: (-r["confidence"], -abs(r["score"]), r["segment_id"]))
+        bronze_list = sorted(bronze_sent.values(), key=lambda r: (-r["confidence"], -abs(r["score"]), r["segment_id"]))
+        silver_aspect.sort(key=lambda r: (-r["score"], r["anchor_segment"], r["neighbor_segment"]))
+        bronze_aspect.sort(key=lambda r: (-r["score"], r["anchor_segment"], r["neighbor_segment"]))
         return final_tau, silver_aspect, bronze_aspect, silver_list, bronze_list
 
-    def _merge_sentiments(self, existing, update):
-        weight_existing = existing.get("confidence", 0.0)
-        weight_update = update.get("confidence", 0.0)
-        total = weight_existing + weight_update
-        if total <= 0:
-            merged_score = 0.5 * (existing.get("score", 0.0) + update.get("score", 0.0))
-            merged_conf = max(existing.get("confidence", 0.0), update.get("confidence", 0.0))
-        else:
-            merged_score = (existing.get("score", 0.0) * weight_existing + update.get("score", 0.0) * weight_update) / total
-            merged_conf = total / 2.0
-        label = existing.get("label")
-        if update.get("confidence", 0.0) >= existing.get("confidence", 0.0):
-            label = update.get("label")
-        merged = {
-            "segment_id": existing.get("segment_id") or update.get("segment_id"),
-            "label": label,
-            "score": merged_score,
-            "confidence": merged_conf,
-            "source": "llm",
-        }
-        return merged
+    def _merge_sentiments(self, a, b):
+        wa, wb = a.get("confidence", 0.0), b.get("confidence", 0.0)
+        tot = wa + wb
+        score = (a.get("score", 0.0) * wa + b.get("score", 0.0) * wb) / tot if tot > 0 else 0.5 * (a.get("score", 0.0) + b.get("score", 0.0))
+        conf = tot / 2.0 if tot > 0 else max(a.get("confidence", 0.0), b.get("confidence", 0.0))
+        label = b.get("label") if wb >= wa else a.get("label")
+        return {"segment_id": a.get("segment_id") or b.get("segment_id"), "label": label, "score": score, "confidence": conf, "source": "llm"}
 
     def _segment_identifier(self, segment, fallback):
-        if not isinstance(segment, dict):
-            return fallback
-        for key in ["segment_id", "id", "segment"]:
-            value = segment.get(key)
-            if value:
-                return value
+        sid = segment.get("segment_id")
+        if sid: return sid
+        alt = segment.get("id") or segment.get("segment")
+        if alt: return alt
         item = segment.get("item_id")
         if item:
-            text = self._normalize_text(segment.get("text"))
-            if text:
-                return f"{item}:{text}"
+            txt = self._normalize_text(segment.get("text"))
+            if txt: return f"{item}:{txt}"
         return fallback
 
     def _ensure_llm_audits(self, entries, cache, model, double_judge):
-        pending = []
-        keys = []
-        for entry in entries:
-            key = self._pair_key(entry)
-            if key in cache:
-                continue
-            prompt = self._build_llm_prompt(entry["anchor_text"], entry["neighbor_text"])
-            pending.append(prompt)
-            keys.append(key)
-        if pending:
-            responses = run_llm_batch(pending, "segment_aspect_sentiment_audit", model=model, temperature=0.0, use_json=True)
-            parsed_primary = [self._parse_audit_output(text) for text in responses]
+        prompts, keys = [], []
+        for e in entries:
+            k = self._pair_key(e)
+            if k in cache: continue
+            prompts.append(self._build_llm_prompt(e["anchor_text"], e["neighbor_text"]))
+            keys.append(k)
+
+        if prompts:
+            r1 = run_llm_batch(prompts, "segment_aspect_sentiment_audit", model=model, temperature=0.0, use_json=True)
+            p1 = [self._parse_audit_output(t) for t in r1]
             if double_judge:
-                responses_secondary = run_llm_batch(pending, "segment_aspect_sentiment_audit_double", model=model, temperature=0.0, use_json=True)
-                parsed_secondary = [self._parse_audit_output(text) for text in responses_secondary]
-                combined = []
-                for first, second in zip(parsed_primary, parsed_secondary):
-                    combined.append(self._combine_audits(first, second))
-                parsed_primary = combined
-            for key, parsed in zip(keys, parsed_primary):
-                cache[key] = parsed
-        result = {}
-        for entry in entries:
-            key = self._pair_key(entry)
-            if key in cache:
-                result[key] = cache[key]
-        return result
+                r2 = run_llm_batch(prompts, "segment_aspect_sentiment_audit_double", model=model, temperature=0.0, use_json=True)
+                p2 = [self._parse_audit_output(t) for t in r2]
+                p1 = [self._combine_audits(a, b) for a, b in zip(p1, p2)]
+            for k, v in zip(keys, p1):
+                cache[k] = v
 
-    def _combine_audits(self, primary, secondary):
-        if not primary and not secondary:
+        return {self._pair_key(e): cache[self._pair_key(e)] for e in entries if self._pair_key(e) in cache}
+
+    def _combine_audits(self, a, b):
+        if not a and not b:
             return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
-        if not secondary:
-            return primary
-        if not primary:
-            return secondary
-        sentiments_primary = primary.get("sentiments") or [None, None]
-        sentiments_secondary = secondary.get("sentiments") or [None, None]
-        aspect_same = bool(primary.get("aspect_same")) and bool(secondary.get("aspect_same"))
-        label = primary.get("aspect_label") if aspect_same else ""
-        if not label and aspect_same:
-            label = secondary.get("aspect_label") or ""
-        sentiments = []
-        for idx in range(2):
-            sentiments.append(self._merge_sentiment_entries(sentiments_primary[idx], sentiments_secondary[idx]))
-        return {"aspect_same": aspect_same, "aspect_label": label, "sentiments": sentiments}
+        if not a: return b
+        if not b: return a
+        same = bool(a.get("aspect_same")) and bool(b.get("aspect_same"))
+        label = a.get("aspect_label") if same else ""
+        if not label and same: label = b.get("aspect_label") or ""
+        s1, s2 = a.get("sentiments") or [None, None], b.get("sentiments") or [None, None]
+        return {"aspect_same": same, "aspect_label": label, "sentiments": [self._merge_sentiment_entries(s1[0], s2[0]), self._merge_sentiment_entries(s1[1], s2[1])]}
 
-    def _merge_sentiment_entries(self, first, second):
-        if first is None and second is None:
-            return {"label": "NEU", "score": 0.0, "confidence": 0.0}
-        if second is None:
-            return first
-        if first is None:
-            return second
-        weight_first = first.get("confidence", 0.0)
-        weight_second = second.get("confidence", 0.0)
-        total = weight_first + weight_second
-        if total <= 0:
-            score = 0.5 * (first.get("score", 0.0) + second.get("score", 0.0))
-            confidence = max(first.get("confidence", 0.0), second.get("confidence", 0.0))
-        else:
-            score = (first.get("score", 0.0) * weight_first + second.get("score", 0.0) * weight_second) / total
-            confidence = total / 2.0
-        label = first.get("label") if weight_first >= weight_second else second.get("label")
-        return {"label": label, "score": score, "confidence": confidence}
+    def _merge_sentiment_entries(self, x, y):
+        if x is None and y is None: return {"label": "NEU", "score": 0.0, "confidence": 0.0}
+        if x is None: return y
+        if y is None: return x
+        wx, wy = x.get("confidence", 0.0), y.get("confidence", 0.0)
+        tot = wx + wy
+        score = (x.get("score", 0.0) * wx + y.get("score", 0.0) * wy) / tot if tot > 0 else 0.5 * (x.get("score", 0.0) + y.get("score", 0.0))
+        conf = tot / 2.0 if tot > 0 else max(x.get("confidence", 0.0), y.get("confidence", 0.0))
+        label = x.get("label") if wx >= wy else y.get("label")
+        return {"label": label, "score": score, "confidence": conf}
 
-    def _pair_key(self, entry):
-        anchor_id = self._segment_identifier(entry["anchor"], entry["anchor_text"])
-        neighbor_id = self._segment_identifier(entry["neighbor"], entry["neighbor_text"])
-        return (str(anchor_id), str(neighbor_id))
+    def _pair_key(self, e):
+        return (str(self._segment_identifier(e["anchor"], e["anchor_text"])), str(self._segment_identifier(e["neighbor"], e["neighbor_text"])))
 
-    def _build_llm_prompt(self, anchor_text, neighbor_text):
-        template = [
+    def _build_llm_prompt(self, a, b):
+        return "\n".join([
             "You are auditing two review segments.",
             "For each pair, answer in JSON with keys: aspect_same (YES or NO), aspect_label (short phrase), segment_a, segment_b.",
             "segment_a and segment_b must each contain label (NEG/NEU/POS), score (between -1 and 1), confidence (between 0 and 1).",
             "Decide aspect_same by focusing on the primary aspect described, ignoring sentiment differences.",
             "Use empty string for aspect_label when aspect_same is NO.",
-            "Pair:",
-            f"Segment A: {self._truncate_for_prompt(anchor_text)}",
-            f"Segment B: {self._truncate_for_prompt(neighbor_text)}",
-        ]
-        return "\n".join(template)
+            f"Segment A: {self._truncate_for_prompt(a)}",
+            f"Segment B: {self._truncate_for_prompt(b)}",
+        ])
 
     def _truncate_for_prompt(self, text, limit=480):
-        snippet = text.strip()
-        if len(snippet) <= limit:
-            return snippet
-        trimmed = snippet[:limit].rstrip()
-        return f"{trimmed}…"
+        t = text.strip()
+        return t if len(t) <= limit else f"{t[:limit].rstrip()}…"
 
     def _parse_audit_output(self, text):
-        if not text:
-            return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
-        cleaned = text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`").strip()
-            if cleaned.lower().startswith("json"):
-                cleaned = cleaned[4:].strip()
-        try:
-            data = json.loads(cleaned)
-        except Exception:
-            return {"aspect_same": False, "aspect_label": "", "sentiments": [None, None]}
-        aspect_flag = str(data.get("aspect_same", "")).strip().upper() == "YES"
-        label = self._normalize_text(data.get("aspect_label")) if aspect_flag else ""
-        sentiments = []
-        for key in ["segment_a", "segment_b"]:
-            sentiments.append(self._normalize_sentiment_entry(data.get(key)))
-        return {"aspect_same": aspect_flag, "aspect_label": label, "sentiments": sentiments}
+        s = text.strip()
+        if s.startswith("```"):
+            s = s.strip("`").strip()
+            if s.lower().startswith("json"): s = s[4:].strip()
+        data = json.loads(s)
+        flag = str(data.get("aspect_same", "")).strip().upper() == "YES"
+        label = self._normalize_text(data.get("aspect_label")) if flag else ""
+        a = self._normalize_sentiment_entry(data.get("segment_a"))
+        b = self._normalize_sentiment_entry(data.get("segment_b"))
+        return {"aspect_same": flag, "aspect_label": label, "sentiments": [a, b]}
 
-    def _normalize_sentiment_entry(self, payload):
-        if not isinstance(payload, dict):
-            return {"label": "NEU", "score": 0.0, "confidence": 0.0}
-        label = str(payload.get("label", "NEU")).strip().upper()
-        if label not in {"NEG", "NEU", "POS"}:
-            label = "NEU"
-        score = payload.get("score", 0.0)
-        try:
-            score = float(score)
-        except Exception:
-            score = 0.0
-        score = max(min(score, 1.0), -1.0)
-        confidence = payload.get("confidence", 0.0)
-        try:
-            confidence = float(confidence)
-        except Exception:
-            confidence = 0.0
-        confidence = max(min(confidence, 1.0), 0.0)
-        return {"label": label, "score": score, "confidence": confidence}
+    def _normalize_sentiment_entry(self, p):
+        lab = str(p.get("label", "NEU")).strip().upper()
+        if lab not in {"NEG", "NEU", "POS"}: lab = "NEU"
+        sc = float(p.get("score", 0.0))
+        cf = float(p.get("confidence", 0.0))
+        sc = max(min(sc, 1.0), -1.0)
+        cf = max(min(cf, 1.0), 0.0)
+        return {"label": lab, "score": sc, "confidence": cf}
 
-    def _wilson_lower_bound(self, success, total, confidence):
-        if total <= 0:
-            return 0.0
-        if success <= 0:
-            return 0.0
-        p = float(success) / float(total)
-        z = self._z_value(confidence)
-        denominator = 1.0 + (z ** 2) / total
-        centre = p + (z ** 2) / (2.0 * total)
-        margin = z * math.sqrt((p * (1.0 - p) + (z ** 2) / (4.0 * total)) / total)
-        return (centre - margin) / denominator
-
-    def _z_value(self, confidence):
-        alpha = 1.0 - confidence
-        if alpha <= 0:
-            return 0.0
-        # approximate inverse error function for normal quantile (two-tailed)
-        target = 1.0 - alpha / 2.0
-        return math.sqrt(2.0) * self._inv_erf(2.0 * target - 1.0)
-
-    def _inv_erf(self, x):
-        clamped = max(min(x, 0.999999), -0.999999)
-        a = 0.147
-        log_term = math.log(1.0 - clamped * clamped)
-        part = 2.0 / (math.pi * a) + log_term / 2.0
-        inside = part * part - log_term / a
-        sign = 1.0 if x >= 0 else -1.0
-        return sign * math.sqrt(max(inside, 0.0))
-
+    # ------- Data prep -------
     def _collect_training_pairs(self, limit):
         if limit <= 0:
             return []
         pairs = []
         for item_id in sorted(self.item_segments.keys()):
-            segments = self.item_segments.get(item_id)
-            if not segments:
-                continue
-            valid = [segment for segment in segments if isinstance(segment, dict) and segment.get("text")]
-            if len(valid) < 2:
-                continue
-            base = valid[0]
-            for other in valid[1:]:
+            segs = [s for s in self.item_segments[item_id] if s.get("text")]
+            if len(segs) < 2: continue
+            base = segs[0]
+            for other in segs[1:]:
                 pairs.append((base, other))
-                if len(pairs) >= limit:
-                    return pairs
+                if len(pairs) >= limit: return pairs
         return pairs
 
-    def _ensure_city_index(self, city=None):
-        key = self.get_city_key(city)
-        if not key:
-            return None
-        cached = self.city_indexes.get(key)
-        if cached is not None:
-            return cached
-        payload = self.get_city_data(key)
-        if not payload:
-            self.city_indexes[key] = None
-            return None
-        segments = []
-        items = payload.get("ITEMS") if isinstance(payload, dict) else None
-        if isinstance(items, dict):
-            for item_id in items.keys():
-                collection = self.item_segments.get(item_id)
-                if not collection:
-                    continue
-                segments.extend(collection)
-        reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
-        if isinstance(reviews, list):
-            for review in reviews:
-                if not isinstance(review, dict):
-                    continue
-                review_id = review.get("review_id")
-                if review_id:
-                    segments.extend(self.get_review_segments(review_id))
-        cleaned = []
-        seen = set()
-        for segment in segments:
-            if not isinstance(segment, dict):
-                continue
-            seg_id = segment.get("segment_id")
-            if not seg_id or seg_id in seen:
-                continue
-            text = segment.get("text")
-            if not text:
-                continue
-            seen.add(seg_id)
-            cleaned.append(segment)
+    # ------- Global index (replaces _ensure_city_index) -------
+    def _ensure_index(self):
+        if self.index is not None:
+            return self.index
+
+        segs = []
+        for it in self.item_segments.keys():
+            segs.extend(self.item_segments[it])
+
+        seen, cleaned = set(), []
+        for s in segs:
+            sid = s.get("segment_id")
+            t = s.get("text")
+            if sid and t and sid not in seen:
+                seen.add(sid)
+                cleaned.append(s)
+
         if not cleaned:
-            self.city_indexes[key] = None
+            self.index = None
             return None
-        texts = [segment.get("text") for segment in cleaned]
+
+        texts = [s.get("text") for s in cleaned]
         aspects = self.segment_encoder.encode_texts(texts, batch_size=self.encode_batch_size, logmap=True)
-        if aspects.numel() == 0:
-            self.city_indexes[key] = None
+        if not aspects.numel():
+            self.index = None
             return None
+
         with torch.no_grad():
             ball = self.segment_encoder.expmap0(aspects)
-        index = {
-            "tangent": aspects,
-            "ball": ball,
-            "segments": cleaned,
-            "items": [segment.get("item_id") for segment in cleaned],
-        }
-        self.city_indexes[key] = index
-        return index
+
+        self.index = {"tangent": aspects, "ball": ball, "segments": cleaned, "items": [s.get("item_id") for s in cleaned]}
+        return self.index

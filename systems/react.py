@@ -46,13 +46,13 @@ class ReactRetrievalBaseline(BaseSystem):
         self.react_model = "gpt-5-nano"
         temperature = getattr(args, "react_temperature", 0)
         self.react_temperature = temperature
-        self.retriever = "sparse"
         summary_k = getattr(args, "react_summary_k", 3)
         if not isinstance(summary_k, int) or summary_k <= 0:
             summary_k = 3
         self.react_summary_k = summary_k
         self._bm25_helper = None
         self._dense_helper = None
+        self.retriever = "sparse"
 
     def recommend(self, request, city=None, top_k=None):
         query_text = self._extract_query(request)
