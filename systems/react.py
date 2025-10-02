@@ -52,7 +52,7 @@ class ReactRetrievalBaseline(BaseSystem):
         self.react_summary_k = summary_k
         self._bm25_helper = None
         self._dense_helper = None
-        self.retriever = "sparse"
+        self.retriever = "dense" #"sparse" or "dense"
 
     def recommend(self, request, city=None, top_k=None):
         query_text = self._extract_query(request)
