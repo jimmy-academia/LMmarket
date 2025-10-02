@@ -19,7 +19,7 @@ class BM25Baseline(BaseSystem):
         if resolved in self.cache:
             return self.cache[resolved]
         payload = self.get_city_data(resolved)
-        if not payload:
+        if not isinstance(payload, dict):
             self.cache[resolved] = None
             return None
         prepared = self._prepare_reviews(payload)
@@ -52,8 +52,6 @@ class BM25Baseline(BaseSystem):
                 continue
             review_id = entry.get("review_id")
             item_id = entry.get("item_id")
-            if not item_id:
-                item_id = entry.get("business_id")
             text = entry.get("text")
             if not review_id or not item_id or not text:
                 continue

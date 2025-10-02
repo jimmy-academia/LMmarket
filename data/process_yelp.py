@@ -27,8 +27,7 @@ def _haversine_km(a, b):
 
 
 def _geometric_median(points):
-    if not points:
-        return None
+    assert points
     lat = sum(p[0] for p in points) / len(points)
     lon = sum(p[1] for p in points) / len(points)
     for _ in range(MAX_STEPS):
@@ -60,65 +59,32 @@ def _geometric_median(points):
 
 def _iter_user_points(user_ids, review_map, coord_map):
     for rid in user_ids:
-        item_id = review_map.get(rid)
-        if not item_id:
-            continue
-        coord = coord_map.get(item_id)
-        if coord is None:
-            continue
+        item_id = review_map[rid]
+        coord = coord_map[item_id]
         yield coord
 
 
 def process_yelp_data(args, DATA):
     min_reviews = getattr(args, "min_user_location_reviews", DEFAULT_MIN_REVIEWS)
+    assert min_reviews > 0
     user_loc = {}
     for city, payload in DATA.items():
-        reviews = payload.get("REVIEWS")
-        if not reviews:
-            reviews = []
-        users = payload.get("USERS")
-        if not users:
-            users = {}
-        info = payload.get("INFO")
-        if not info:
-            info = {}
-        review_map = {}
-        for entry in reviews:
-            rid = entry.get("review_id")
-            item_id = entry.get("item_id")
-            if not item_id:
-                item_id = entry.get("business_id")
-            if rid and item_id:
-                review_map[rid] = item_id
-        coord_map = {}
-        for item_id, meta in info.items():
-            coords = meta.get("coords") if meta else None
-            if not coords or len(coords) != 2:
-                continue
-            lat, lon = coords
-            if lat is None or lon is None:
-                continue
-            coord_map[item_id] = (lat, lon)
+        reviews = payload["REVIEWS"]
+        users = payload["USERS"]
+        info = payload["INFO"]
+        review_map = {entry["review_id"]: entry["item_id"] for entry in reviews}
+        coord_map = {item_id: meta["coords"] for item_id, meta in info.items()}
+        city_loc = {}
         for uid, user_ids in users.items():
             points = list(_iter_user_points(user_ids, review_map, coord_map))
-            if len(points) < min_reviews:
-                continue
+            assert len(points) >= min_reviews
             center = _geometric_median(points)
-            if center is None:
-                continue
-            distances = []
-            for p in points:
-                d = _haversine_km(center, p)
-                if d > 0:
-                    distances.append(d)
-            if not distances:
-                continue
+            distances = [max(_haversine_km(center, p), EPSILON) for p in points]
             mean_distance = sum(distances) / len(distances)
-            if mean_distance <= 0:
-                continue
-            user_loc.setdefault(city, {})[uid] = {
+            city_loc[uid] = {
                 "center_lat": center[0],
                 "center_lon": center[1],
                 "lambda_per_km": 1.0 / mean_distance,
             }
+        user_loc[city] = city_loc
     return user_loc
