@@ -1,24 +1,27 @@
+import os
 import json
 import math
 import torch
-
-from .base import BaseSystem
-from llm import run_llm_batch
+from tqdm import tqdm
 
 from torch import nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
-from tqdm import tqdm
+from transformers.utils import is_flash_attn_2_available
+
+from .base import BaseSystem
+from llm import run_llm_batch
 
 
 # =========================
 # Model
 # =========================
+
 class SegmentEmbeddingModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        # ---- Fixed defaults (no config) ----
+        # ---- Defaults (no external config) ----
         backbone = "bert-base-uncased"
         self.pooling = "cls"
         self.max_length = 160
@@ -34,10 +37,27 @@ class SegmentEmbeddingModel(nn.Module):
         self.curvature = 1.0
         self.eps = 1e-5
 
-        self.tokenizer = AutoTokenizer.from_pretrained(backbone)
-        self.encoder = AutoModel.from_pretrained(backbone)
-        enc_dim = self.encoder.config.hidden_size
+        # ---- Device / perf knobs ----
+        os.environ["TOKENIZERS_PARALLELISM"] = "true"
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
+        torch_dtype = (
+            torch.bfloat16 if (self.device.type == "cuda" and torch.cuda.is_bf16_supported())
+            else (torch.float16 if self.device.type == "cuda" else torch.float32)
+        )
+        attn_impl = "flash_attention_2" if (self.device.type == "cuda" and is_flash_attn_2_available()) else "sdpa"
 
+        # ---- Tokenizer / Encoder (FlashAttention2 or SDPA) ----
+        self.tokenizer = AutoTokenizer.from_pretrained(backbone)
+        self.encoder = AutoModel.from_pretrained(
+            backbone,
+            torch_dtype=torch_dtype,
+            attn_implementation=attn_impl,
+        )
+
+        enc_dim = self.encoder.config.hidden_size
         self.trunk = nn.Sequential(
             nn.Linear(enc_dim, self.hidden_dim),
             nn.LayerNorm(self.hidden_dim),
@@ -47,8 +67,6 @@ class SegmentEmbeddingModel(nn.Module):
         self.aspect_head = nn.Linear(self.hidden_dim, self.aspect_dim)
         self.sentiment_head = nn.Linear(self.hidden_dim, self.sentiment_dim)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = torch.device(device)
         self.to(self.device)
 
     def forward(self, input_ids, attention_mask):
@@ -66,7 +84,7 @@ class SegmentEmbeddingModel(nn.Module):
     # ------- Losses -------
     def aspect_contrastive_loss(self, anchor, positives, negatives=None, temperature=None):
         t = temperature or self.aspect_temperature
-        anchor = self.proj(anchor).unsqueeze(1)          # [B,1,D]
+        anchor = self.proj(anchor).unsqueeze(1)
         if positives.ndim == 2: positives = positives.unsqueeze(1)
         if negatives is not None and negatives.ndim == 2: negatives = negatives.unsqueeze(1)
         pos_sim = torch.exp(-self.hyperbolic_distance(anchor, positives) / t).sum(1)
@@ -74,8 +92,7 @@ class SegmentEmbeddingModel(nn.Module):
         if negatives is not None:
             neg_sim = torch.exp(-self.hyperbolic_distance(anchor, negatives) / t).sum(1)
             denom = denom + neg_sim
-        loss = -torch.log((pos_sim / denom.clamp(min=self.eps)).clamp(min=self.eps))
-        return loss.mean()
+        return -torch.log((pos_sim / denom.clamp(min=self.eps)).clamp(min=self.eps)).mean()
 
     def sentiment_loss(self, pred, labels):
         if self.sentiment_loss_type == "mse":
@@ -96,8 +113,7 @@ class SegmentEmbeddingModel(nn.Module):
         if not texts:
             ea = torch.empty(0, self.aspect_dim)
             if return_sentiment:
-                es = torch.empty(0, self.sentiment_dim)
-                return ea, es
+                return ea, torch.empty(0, self.sentiment_dim)
             return ea
 
         bs = batch_size or len(texts)
@@ -107,7 +123,8 @@ class SegmentEmbeddingModel(nn.Module):
             batch = texts[i:i + bs]
             toks = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
             toks = {k: v.to(self.device) for k, v in toks.items()}
-            with torch.no_grad():
+            with torch.inference_mode(), torch.cuda.amp.autocast(enabled=self.device.type=="cuda",
+                                                                 dtype=(torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)):
                 o = self.forward(toks["input_ids"], toks["attention_mask"])
             a = self.logmap0(o["z_asp"]) if logmap else o["z_asp"]
             asp_chunks.append(a.cpu())
@@ -133,7 +150,7 @@ class SegmentEmbeddingModel(nn.Module):
         d = self.hyperbolic_distance(self.expmap0(u), self.expmap0(v))
         return d.squeeze().item()
 
-    # ------- Hyperbolic ops (Poincaré ball) -------
+    # ------- Hyperbolic ops -------
     def logmap0(self, x):
         x = self.proj(x)
         n = x.norm(-1, keepdim=True).clamp(min=self.eps)
@@ -183,15 +200,10 @@ class SegmentEmbeddingModel(nn.Module):
         neg = aspect_negatives
         asp_loss = self.aspect_contrastive_loss(anchor, pos, neg)
         sent_loss = self.sentiment_loss(out["z_sent"], sentiment_labels.to(self.device)) if sentiment_labels is not None else torch.tensor(0.0, device=self.device)
-
         total = self.lambda_aspect * asp_loss + self.lambda_sentiment * sent_loss
         if optimizer is not None:
-            optimizer.zero_grad()
-            total.backward()
-            optimizer.step()
-
+            optimizer.zero_grad(); total.backward(); optimizer.step()
         return {"loss": total.detach(), "aspect_loss": asp_loss.detach(), "sentiment_loss": sent_loss.detach(), **out}
-
 
 # =========================
 # System
