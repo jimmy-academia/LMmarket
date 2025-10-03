@@ -436,7 +436,7 @@ class BaseSystem:
                 "matrix": None,
                 "dimension": None,
             }
-        model = SentenceTransformer("nvidia/NV-Embed-v2").to(self.args.device)
+        model = SentenceTransformer("nvidia/NV-Embed-v2", trust_remote_code=True).to(self.args.device)
         embeddings = model.encode(texts, batch_size=self.segment_batch_size if self.segment_batch_size else 32, convert_to_numpy=True, normalize_embeddings=True)
         matrix = np.asarray(embeddings, dtype="float32")
         for idx, vector in enumerate(matrix):
