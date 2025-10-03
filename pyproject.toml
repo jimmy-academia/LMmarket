@@ -5,10 +5,24 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "nltk>=3.9.1",
+    "datasets>=4.1.1",
+    "einops>=0.8.1",
+    "faiss-cpu>=1.12.0",
+    "hf-transfer>=0.1.9",
+    "numpy<2",
+    "onnxruntime-gpu>=1.23.0",
     "openai>=1.97.0",
     "pandas>=2.3.1",
-    "sentence-transformers>=5.0.0",
+    "rank-bm25>=0.2.2",
+    "sentence-transformers==2.7.0",
+    "spacy>=3.8.7",
     "symspellpy>=6.7.7",
-    "wtpsplit>=1.0.4",
+    "tokenizers==0.20.0",
+    "torch>=2.7.1",
+    "tqdm>=4.67.1",
+    "transformers==4.45.2",
+    "wtpsplit",
 ]
+
+[tool.uv.sources]
+wtpsplit = { git = "https://github.com/segment-any-text/wtpsplit.git" }
