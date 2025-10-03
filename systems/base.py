@@ -1,3 +1,6 @@
+import numpy as np
+import faiss
+from openai import OpenAI
 from tqdm import tqdm
 
 from symspellpy import SymSpell, Verbosity
@@ -53,6 +56,10 @@ class BaseSystem:
         segment_payload = load_or_build(segment_path, dumpp, loadp, self._segment_reviews, self.all_reviews)
         self._apply_segment_data(segment_payload)
 
+        embedding_path = args.cache_dir / f"nv_segments_{args.dset}.pkl"
+        embedding_payload = load_or_build(embedding_path, dumpp, loadp, self._build_segment_embeddings, self.segments)
+        self._apply_segment_embeddings(embedding_payload)
+
     def list_cities(self):
         return list(self.city_list)
 
@@ -70,6 +77,35 @@ class BaseSystem:
         self.segment_lookup = segment_lookup
         self.review_segments = review_segments
         self.item_segments = item_segments
+
+    def _apply_segment_embeddings(self, payload):
+        data = payload if isinstance(payload, dict) else {}
+        records_value = data.get("records")
+        records = records_value if isinstance(records_value, list) else []
+        embeddings = []
+        filtered = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            vector = record.get("embedding")
+            if vector is None:
+                continue
+            array = np.asarray(vector, dtype="float32")
+            if array.size == 0:
+                continue
+            embeddings.append(array)
+            filtered.append(record)
+        if embeddings:
+            matrix = np.vstack(embeddings).astype("float32", copy=False)
+            dim = matrix.shape[1]
+            index = faiss.IndexFlatIP(dim)
+            index.add(matrix)
+        else:
+            matrix = np.zeros((0, 0), dtype="float32")
+            index = None
+        self.segment_embedding_records = filtered
+        self.segment_embedding_matrix = matrix
+        self.segment_faiss_index = index
 
     def get_city_key(self, city=None):
         if city:
@@ -373,6 +409,42 @@ class BaseSystem:
             "item_segments": item_segments,
         }
         return result
+
+    def _build_segment_embeddings(self, segments):
+        records = []
+        if not isinstance(segments, list) or not segments:
+            return {"records": records}
+        client = OpenAI()
+        texts = []
+        meta = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            text = segment.get("text")
+            if not text:
+                continue
+            seg_id = segment.get("segment_id")
+            review_id = segment.get("review_id")
+            entry = {
+                "segment_id": seg_id,
+                "review_id": review_id,
+                "text": text,
+            }
+            texts.append(text)
+            meta.append(entry)
+        if not texts:
+            return {"records": records}
+        batch_size = 128
+        for start in tqdm(range(0, len(texts), batch_size), ncols=88, desc="[base] _build_segment_embeddings"):
+            batch_texts = texts[start:start + batch_size]
+            response = client.embeddings.create(model="nvidia/nv-embed-v2", input=batch_texts)
+            for idx, item in enumerate(response.data):
+                vector = list(item.embedding)
+                meta_index = start + idx
+                entry = dict(meta[meta_index])
+                entry["embedding"] = vector
+                records.append(entry)
+        return {"records": records}
 
     def get_review_segments(self, review_id):
         return self.review_segments.get(review_id, [])
