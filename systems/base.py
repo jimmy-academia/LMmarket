@@ -1,8 +1,12 @@
+import torch
 import numpy as np
 import faiss
 from tqdm import tqdm
 
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, models
+from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
+
+
 from symspellpy import SymSpell, Verbosity
 from wtpsplit import SaT
 
@@ -10,16 +14,22 @@ from pathlib import Path
 
 from utils import load_or_build, dumpp, loadp
 
+
+from .encoder import Encoder
+import multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 SPECIAL_KEYS = {"test", "user_loc"}
 
-class BaseSystem:
+class BaseSystem(Encoder):
     def __init__(self, args, data):
+        super().__init__()
         self.args = args
         self.data = data
-        test = data.get("test")
-        self.test = test if test is not None else []
-        user_loc = data.get("user_loc")
-        self.user_loc = user_loc if user_loc is not None else {}
+        self.test = data.get("test")
+        self.user_loc = data.get("user_loc")
+        self._prepare_model()
+
         self.result = {}
         self.city_lookup = {}
         stats = []
@@ -38,30 +48,110 @@ class BaseSystem:
         self.city_list = [name for _, name in stats]
         self.city_sizes = {name: count for count, name in stats}
         self.default_city = self.city_list[0] if self.city_list else None
-        top_k = getattr(args, "top_k", None)
-        if top_k is None or top_k <= 0:
-            top_k = 5
-            setattr(args, "top_k", top_k)
-        self.default_top_k = top_k
-        batch_size = getattr(args, "segment_batch_size", 32)
-        if not isinstance(batch_size, int) or batch_size <= 0:
-            batch_size = 32
-        self.segment_batch_size = batch_size
+        self.default_top_k = args.top_k
+        self.segment_batch_size = 32
         self.all_reviews = self._collect_all_reviews()
 
         symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
         self.symspell = load_or_build(symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
-        self.segment_model = None
-        self.segment_faiss_index = None
-        self.segment_embedding_entries = []
-        self.segment_embedding_matrix = None
-        self.segment_embedding_dim = None
         segment_path = args.cache_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, self._segment_reviews, self.all_reviews)
         self._apply_segment_data(segment_payload)
+        
         embedding_path = args.cache_dir / f"segment_embeddings_{args.dset}.pkl"
         embedding_payload = load_or_build(embedding_path, dumpp, loadp, self._build_segment_embeddings, self.segments)
         self._apply_segment_embeddings(embedding_payload)
+
+
+    def dep_prepare_model(self):
+        model_name = "nvidia/NV-Embed-v2"
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_has_fp16_weight=False,
+        )
+
+        word = models.Transformer(
+            model_name,
+            max_seq_length=256,
+            config_args={"trust_remote_code": True, "return_dict": True},
+            model_args={
+                "quantization_config": bnb_config,
+                "device_map": "auto",
+                "attn_implementation": "eager",  # NV-Embed requires eager
+                "trust_remote_code": True,
+            },
+            tokenizer_args={"trust_remote_code": True},
+        )
+
+        base = word.auto_model
+
+        class DictToTupleWrapper(torch.nn.Module):
+            def __init__(self, inner):
+                super().__init__()
+                self.inner = inner
+                self.config = inner.config  # ST Pooling needs this
+
+            def _norm_last_hidden(self, emb, seq_len: int):
+                # Normalize to [B, L, H]
+                if emb.dim() == 2:
+                    # [B, H] -> [B, L, H]
+                    return emb.unsqueeze(1).expand(-1, seq_len, -1).contiguous()
+                elif emb.dim() == 3:
+                    # [B, L, H]
+                    return emb
+                elif emb.dim() == 4 and emb.size(1) == 1:
+                    # [B, 1, L, H] -> [B, L, H]
+                    return emb.squeeze(1).contiguous()
+                else:
+                    # Try to squeeze any singleton dims and re-check
+                    squeezed = emb
+                    for d in list(range(squeezed.dim()))[::-1]:
+                        if squeezed.size(d) == 1:
+                            squeezed = squeezed.squeeze(d)
+                    if squeezed.dim() in (2, 3):
+                        return self._norm_last_hidden(squeezed, seq_len)
+                    raise RuntimeError(f"Unhandled embedding shape: {tuple(emb.shape)}")
+
+            def forward(self, *args, **kwargs):
+                # Infer sequence length from attention mask or input_ids
+                attn = kwargs.get("attention_mask", None)
+                if attn is not None:
+                    seq_len = attn.shape[1]
+                else:
+                    input_ids = kwargs.get("input_ids", None)
+                    seq_len = input_ids.shape[1] if input_ids is not None else 1
+
+                out = self.inner(*args, **kwargs)
+                if not isinstance(out, dict):
+                    # Already a tuple/list; ST expects [0] to be [B, L, H]
+                    return out
+
+                # Prefer standard HF; otherwise handle NV-Embed outputs
+                if "last_hidden_state" in out:
+                    return (self._norm_last_hidden(out["last_hidden_state"], seq_len),)
+
+                # NV-Embed variants
+                for key in ("sentence_embeddings", "embeddings"):
+                    if key in out:
+                        return (self._norm_last_hidden(out[key], seq_len),)
+
+                raise KeyError(f"Unexpected model outputs: {list(out.keys())}")
+
+        word.auto_model = DictToTupleWrapper(base)
+
+        pool = models.Pooling(
+            word.get_word_embedding_dimension(),
+            pooling_mode_cls_token=False,
+            pooling_mode_mean_tokens=True,
+            pooling_mode_max_tokens=False,
+        )
+
+        self.model = SentenceTransformer(modules=[word, pool])
+        self.model.eval()
+
+
 
     def list_cities(self):
         return list(self.city_list)
@@ -339,9 +429,8 @@ class BaseSystem:
             }
             self._apply_segment_data(result)
             return result
-        if not self.segment_model:
-            self.segment_model = SaT("sat-12l-sm", ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-        step = self.segment_batch_size if self.segment_batch_size > 0 else 32
+        self.segment_model = SaT("sat-12l-sm", ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        step = self.segment_batch_size 
         total = len(valid_reviews)
         for start in tqdm(range(0, total, step), ncols=88, desc="[base] _segment_reviews"):
             batch = valid_reviews[start:start + step]
@@ -409,15 +498,12 @@ class BaseSystem:
         self.segment_embedding_matrix = matrix
         self.segment_embedding_dim = data.get("dimension")
         index_bytes = data.get("index")
-        if index_bytes:
-            self.segment_faiss_index = faiss.deserialize_index(index_bytes)
-        else:
-            self.segment_faiss_index = None
+        self.segment_faiss_index = faiss.deserialize_index(index_bytes)
 
     def _build_segment_embeddings(self, segments):
         usable = []
         texts = []
-        for record in segments:
+        for record in tqdm(segments, ncols=88, leave=False, desc='collect segments'):
             text = record.get("text")
             if not text:
                 continue
@@ -429,15 +515,31 @@ class BaseSystem:
             }
             usable.append(info)
             texts.append(text)
-        if not texts:
-            return {
-                "entries": [],
-                "index": None,
-                "matrix": None,
-                "dimension": None,
-            }
-        model = SentenceTransformer("nvidia/NV-Embed-v2", trust_remote_code=True).to(self.args.device)
-        embeddings = model.encode(texts, batch_size=self.segment_batch_size if self.segment_batch_size else 32, convert_to_numpy=True, normalize_embeddings=True)
+        
+        # embeddings = self.model.encode(texts, batch_size=8,normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=True)
+        embeddings = self._model_encode(texts, batch_size=16)
+
+        # batch_size = 4
+        # all_embeddings = []
+
+        # for i in tqdm(range(0, len(texts), batch_size), desc="Encoding Texts", ncols=88):
+            # Get the current batch of texts
+            # batch_texts = texts[i:i + batch_size]
+            
+            # Encode the batch
+            # batch_embeddings = self._model_encode(batch_texts)
+            # batch_embeddings = self.model.encode(
+            #     batch_texts,
+            #     # batch_size is handled by our loop, so it's not needed here
+            #     normalize_embeddings=True,
+            #     convert_to_numpy=True
+            # )
+            
+            # Store the results
+            # all_embeddings.append(batch_embeddings)
+
+        # embeddings = np.vstack(all_embeddings)
+
         matrix = np.asarray(embeddings, dtype="float32")
         for idx, vector in enumerate(matrix):
             usable[idx]["embedding"] = vector.tolist()
