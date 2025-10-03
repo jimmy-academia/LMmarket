@@ -1,5 +1,8 @@
+import numpy as np
+import faiss
 from tqdm import tqdm
 
+from sentence_transformers import SentenceTransformer
 from symspellpy import SymSpell, Verbosity
 from wtpsplit import SaT
 
@@ -49,9 +52,16 @@ class BaseSystem:
         symspell_path = args.cache_dir / f"symspell_{args.dset}.pkl"
         self.symspell = load_or_build(symspell_path, dumpp, loadp, self._build_symspell, self.all_reviews)
         self.segment_model = None
+        self.segment_faiss_index = None
+        self.segment_embedding_entries = []
+        self.segment_embedding_matrix = None
+        self.segment_embedding_dim = None
         segment_path = args.cache_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, self._segment_reviews, self.all_reviews)
         self._apply_segment_data(segment_payload)
+        embedding_path = args.cache_dir / f"segment_embeddings_{args.dset}.pkl"
+        embedding_payload = load_or_build(embedding_path, dumpp, loadp, self._build_segment_embeddings, self.segments)
+        self._apply_segment_embeddings(embedding_payload)
 
     def list_cities(self):
         return list(self.city_list)
@@ -379,3 +389,65 @@ class BaseSystem:
 
     def get_segment(self, segment_id):
         return self.segment_lookup.get(segment_id)
+
+    def _apply_segment_embeddings(self, payload):
+        data = payload or {}
+        entries = data.get("entries")
+        if entries is None:
+            entries = []
+        self.segment_embedding_entries = entries
+        matrix = data.get("matrix")
+        if matrix is None and entries:
+            vectors = []
+            for entry in entries:
+                vector = entry.get("embedding")
+                if vector is None:
+                    continue
+                vectors.append(vector)
+            if vectors:
+                matrix = np.array(vectors, dtype="float32")
+        self.segment_embedding_matrix = matrix
+        self.segment_embedding_dim = data.get("dimension")
+        index_bytes = data.get("index")
+        if index_bytes:
+            self.segment_faiss_index = faiss.deserialize_index(index_bytes)
+        else:
+            self.segment_faiss_index = None
+
+    def _build_segment_embeddings(self, segments):
+        usable = []
+        texts = []
+        for record in segments:
+            text = record.get("text")
+            if not text:
+                continue
+            info = {
+                "segment_id": record.get("segment_id"),
+                "review_id": record.get("review_id"),
+                "item_id": record.get("item_id"),
+                "text": text,
+            }
+            usable.append(info)
+            texts.append(text)
+        if not texts:
+            return {
+                "entries": [],
+                "index": None,
+                "matrix": None,
+                "dimension": None,
+            }
+        model = SentenceTransformer("nvidia/NV-Embed-v2")
+        embeddings = model.encode(texts, batch_size=self.segment_batch_size if self.segment_batch_size else 32, convert_to_numpy=True, normalize_embeddings=True)
+        matrix = np.asarray(embeddings, dtype="float32")
+        for idx, vector in enumerate(matrix):
+            usable[idx]["embedding"] = vector.tolist()
+        dim = matrix.shape[1]
+        index = faiss.IndexFlatIP(dim)
+        index.add(matrix)
+        serialized = faiss.serialize_index(index)
+        return {
+            "entries": usable,
+            "index": serialized,
+            "matrix": matrix,
+            "dimension": dim,
+        }
