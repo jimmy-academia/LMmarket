@@ -43,6 +43,7 @@ def _resolve_args(args):
         args.dset_root = readf(args.dset_root).strip()
     else:
         print(f"Warning: place the dataset root dir in the path assigned to args.dset_root: {args.dset_root}")
+        input('==paused==')
 
     if args.device > torch.cuda.device_count():
         input(f'Warning: args.device {args.device} > device count {torch.cuda.device_count()}. Set to default index 0. Press anything to continue.')
