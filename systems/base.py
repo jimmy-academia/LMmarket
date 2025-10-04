@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import faiss
 from tqdm import tqdm
+import logging
 
 from sentence_transformers import SentenceTransformer, models
 from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
@@ -38,7 +39,15 @@ class BaseSystem(Encoder):
         self._apply_segment_data(segment_payload)
         
         embedding_path = args.clean_dir / f"segment_embeddings_{args.dset}.pkl"
-        embedding_payload = load_or_build(embedding_path, dumpp, loadp, self._build_segment_embeddings, self.segments)
+        self.embedding_path = embedding_path
+        self.embedding_partial_path = Path(str(embedding_path) + ".partial")
+        if embedding_path.exists():
+            logging.info(f"[base] loading embeddings from {embedding_path}")
+            embedding_payload = loadp(embedding_path)
+        else:
+            logging.info(f"[base] building embeddings → {embedding_path}")
+            embedding_payload = self._build_segment_embeddings(self.segments)
+            dumpp(embedding_path, embedding_payload)
         self._apply_segment_embeddings(embedding_payload)
 
     def _tokenize_for_spell(self, text):
@@ -174,32 +183,91 @@ class BaseSystem(Encoder):
     # % --- embedding ---
 
     def _build_segment_embeddings(self, segments):
-        usable = []
-        texts = []
-        for record in tqdm(segments, ncols=88, desc='[base] collect segments for embedding'):
+        partial_path = self.embedding_partial_path
+        partial_path.parent.mkdir(parents=True, exist_ok=True)
+        entries = []
+        seen = set()
+        if partial_path.exists():
+            logging.info(f"[base] resuming embeddings from {partial_path}")
+            cached = loadp(partial_path)
+            if isinstance(cached, dict):
+                stored = cached.get("entries")
+                if isinstance(stored, list):
+                    entries = stored
+                    for entry in entries:
+                        sid = entry.get("segment_id")
+                        if sid:
+                            seen.add(sid)
+
+        def flush(records, texts):
+            if not texts:
+                return
+            logging.info(f"[base] encoding {len(texts)} segments")
+            embeds = self._model_encode(texts)
+            for idx, vector in enumerate(embeds):
+                item = records[idx]
+                item["embedding"] = vector.tolist()
+                entries.append(item)
+                sid = item.get("segment_id")
+                if sid:
+                    seen.add(sid)
+            dumpp(partial_path, {"entries": entries})
+
+        batch_records = []
+        batch_texts = []
+        for record in tqdm(segments, ncols=88, desc='[base] embed segments'):
             text = record.get("text")
             if not text:
                 continue
+            sid = record.get("segment_id")
+            if sid and sid in seen:
+                continue
             info = {
-                "segment_id": record.get("segment_id"),
+                "segment_id": sid,
                 "review_id": record.get("review_id"),
                 "item_id": record.get("item_id"),
                 "text": text,
             }
-            usable.append(info)
-            texts.append(text)
-        
-        embeddings = self._model_encode(texts)
+            batch_records.append(info)
+            batch_texts.append(text)
+            if len(batch_texts) >= 256:
+                flush(batch_records, batch_texts)
+                batch_records = []
+                batch_texts = []
+        if batch_texts:
+            flush(batch_records, batch_texts)
 
-        matrix = np.asarray(embeddings, dtype="float32")
-        for idx, vector in enumerate(matrix):
-            usable[idx]["embedding"] = vector.tolist()
+        partial_path.unlink(missing_ok=True)
+
+        if not entries:
+            return {"entries": [], "index": None, "matrix": None, "dimension": None}
+
+        entry_map = {}
+        for entry in entries:
+            sid = entry.get("segment_id")
+            if sid and sid not in entry_map:
+                entry_map[sid] = entry
+        ordered = []
+        used = set()
+        for record in segments:
+            sid = record.get("segment_id")
+            if not sid or sid in used:
+                continue
+            entry = entry_map.get(sid)
+            if entry:
+                ordered.append(entry)
+                used.add(sid)
+        entries = ordered
+        if not entries:
+            return {"entries": [], "index": None, "matrix": None, "dimension": None}
+
+        matrix = np.asarray([entry.get("embedding") for entry in entries], dtype="float32")
         dim = matrix.shape[1]
         index = faiss.IndexFlatIP(dim)
         index.add(matrix)
         serialized = faiss.serialize_index(index)
         return {
-            "entries": usable,
+            "entries": entries,
             "index": serialized,
             "matrix": matrix,
             "dimension": dim,
@@ -224,4 +292,7 @@ class BaseSystem(Encoder):
         self.segment_embedding_matrix = matrix
         self.segment_embedding_dim = data.get("dimension")
         index_bytes = data.get("index")
-        self.segment_faiss_index = faiss.deserialize_index(index_bytes)
+        if index_bytes:
+            self.segment_faiss_index = faiss.deserialize_index(index_bytes)
+        else:
+            self.segment_faiss_index = None
