@@ -32,18 +32,35 @@ class BaseSystem(Encoder):
 
         self.result = {}
         self.city_lookup = {}
+        data_map = data if hasattr(data, "items") else {}
+        self._global_schema = all(key in data_map for key in ("users", "items", "reviews"))
         stats = []
-        for key, payload in data.items():
-            if key in SPECIAL_KEYS:
-                continue
-            if not isinstance(payload, dict):
-                continue
-            norm = key.strip().lower()
-            if not norm or norm in self.city_lookup:
-                continue
-            self.city_lookup[norm] = key
-            count = self._count_city_items(payload)
-            stats.append((count, key))
+        if self._global_schema:
+            city_counts = {}
+            pooled_items = data_map.get("items") or {}
+            for meta in pooled_items.values():
+                city = meta.get("city")
+                if not city:
+                    continue
+                city_counts[city] = city_counts.get(city, 0) + 1
+            for city, count in city_counts.items():
+                norm = city.strip().lower()
+                if not norm or norm in self.city_lookup:
+                    continue
+                self.city_lookup[norm] = city
+                stats.append((count, city))
+        else:
+            for key, payload in data_map.items():
+                if key in SPECIAL_KEYS:
+                    continue
+                if not hasattr(payload, "get"):
+                    continue
+                norm = key.strip().lower()
+                if not norm or norm in self.city_lookup:
+                    continue
+                self.city_lookup[norm] = key
+                count = self._count_city_items(payload)
+                stats.append((count, key))
         stats.sort(key=lambda pair: (pair[0], pair[1].strip().lower()))
         self.city_list = [name for _, name in stats]
         self.city_sizes = {name: count for count, name in stats}
@@ -173,7 +190,7 @@ class BaseSystem(Encoder):
 
     def get_city_key(self, city=None):
         if city:
-            if city in self.data and city not in SPECIAL_KEYS:
+            if not self._global_schema and city in self.data and city not in SPECIAL_KEYS:
                 return city
             norm = city.strip().lower()
             if norm in self.city_lookup:
@@ -184,6 +201,10 @@ class BaseSystem(Encoder):
         key = self.get_city_key(city)
         if not key:
             return None
+        if self._global_schema:
+            from data.adapters import city_view
+
+            return city_view(self.data, key)
         return self.data.get(key)
 
     def _count_city_items(self, payload):
@@ -333,17 +354,31 @@ class BaseSystem(Encoder):
 
     def _collect_all_reviews(self):
         rows = []
-        for key, payload in self.data.items():
-            if key in SPECIAL_KEYS:
-                continue
-            if not isinstance(payload, dict):
-                continue
-            reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
-            if not isinstance(reviews, list):
-                continue
-            for review in reviews:
-                if isinstance(review, dict):
-                    rows.append(review)
+        if self._global_schema and self.city_list:
+            for city in self.city_list:
+                payload = self.get_city_data(city)
+                if not hasattr(payload, "get"):
+                    continue
+                reviews = payload.get("REVIEWS")
+                if not isinstance(reviews, list):
+                    continue
+                for review in reviews:
+                    if isinstance(review, dict):
+                        rows.append(review)
+            return rows
+
+        if hasattr(self.data, "items"):
+            for key, payload in self.data.items():
+                if key in SPECIAL_KEYS:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                reviews = payload.get("REVIEWS") if isinstance(payload, dict) else None
+                if not isinstance(reviews, list):
+                    continue
+                for review in reviews:
+                    if isinstance(review, dict):
+                        rows.append(review)
         return rows
 
     def _tokenize_for_spell(self, text):
