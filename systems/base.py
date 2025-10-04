@@ -517,7 +517,7 @@ class BaseSystem(Encoder):
             texts.append(text)
         
         # embeddings = self.model.encode(texts, batch_size=8,normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=True)
-        embeddings = self._model_encode(texts, batch_size=16)
+        embeddings = self._model_encode(texts)
 
         # batch_size = 4
         # all_embeddings = []
