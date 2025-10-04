@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-
+from collections import defaultdict
 from tqdm import tqdm
 
 from huggingface_hub import hf_hub_download
@@ -43,6 +43,28 @@ class Encoder:
         model_device = next(self.model.parameters()).device
         self._proj = self._proj.to(device=model_device, dtype=torch.float16).eval()
 
+    def _tokenize_with_progress(self, texts, max_length=160, chunk_size=1024):
+        """
+        Tokenize with a progress bar. Returns a dict with 'input_ids', 'attention_mask', 'length', ...
+        """
+        all_encodings = {"input_ids": [], "attention_mask": [], "length": []}
+
+        for i in tqdm(range(0, len(texts), chunk_size), ncols=88, desc=f"[{self._model_name}] Tokenizing"):
+            chunk = texts[i:i + chunk_size]
+            enc = self.tokenizer(
+                chunk,
+                padding=False,
+                truncation=True,
+                max_length=max_length,
+                return_length=True,
+                return_tensors=None,
+            )
+            all_encodings["input_ids"].extend(enc["input_ids"])
+            all_encodings["attention_mask"].extend(enc["attention_mask"])
+            all_encodings["length"].extend(enc["length"])
+
+        return all_encodings
+
     def _model_encode(self, texts, isquery=False, batch_size=512, max_length=256, normalize=True, return_numpy=True, query_task="s2s"):
         """
         Encode with Stella v5 (8-bit) and return 1024-d embeddings.
@@ -69,16 +91,21 @@ class Encoder:
         device = next(self.model.parameters()).device
 
         # ---- quick length pass (no padding) to build buckets ----
-        len_enc = self.tokenizer(
-            texts,
-            padding=False,
-            truncation=True,
-            max_length=max_length,
-            return_length=True,
-        )
+        print(f'[{self._model_name}] building buckets...')
+        # len_enc = self.tokenizer(
+        #     texts,
+        #     padding=False,
+        #     truncation=True,
+        #     max_length=max_length,
+        #     return_length=True,
+        # )
+        # lengths = len_enc["length"]
+        len_enc = self._tokenize_with_progress(texts, max_length=max_length, chunk_size=1024)
         lengths = len_enc["length"]
         idxs = np.argsort(lengths)  # shortest -> longest
 
+        bucket_bins=(64, 96, 128, 160)
+        
         def which_bin(L):
             for b in bucket_bins:
                 if L <= b:
@@ -86,13 +113,14 @@ class Encoder:
             return bucket_bins[-1]
 
         buckets = defaultdict(list)
-        for i in idxs:
+        for i in tqdm(idxs, ncols=88, desc=f'[{self._model_name}] sorting buckets...'):
             buckets[which_bin(lengths[i])].append(i)
+        print(f'[{self._model_name}] buckets built')
 
         # ---- encode per bucket ----
         vecs = [None] * len(texts)
         with torch.inference_mode():
-            for _, inds in buckets.items():
+            for _, inds in tqdm(buckets.items(), ncols=88, desc=f'[{self._model_name}] encode'):
                 for s in range(0, len(inds), batch_size):
                     sub = inds[s:s + batch_size]
                     sub_texts = [texts[i] for i in sub]

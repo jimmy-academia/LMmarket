@@ -503,7 +503,7 @@ class BaseSystem(Encoder):
     def _build_segment_embeddings(self, segments):
         usable = []
         texts = []
-        for record in tqdm(segments, ncols=88, leave=False, desc='collect segments'):
+        for record in tqdm(segments, ncols=88, desc='[base] collect segments for embedding'):
             text = record.get("text")
             if not text:
                 continue
