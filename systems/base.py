@@ -50,6 +50,12 @@ class BaseSystem(Encoder):
             dumpp(embedding_path, embedding_payload)
         self._apply_segment_embeddings(embedding_payload)
 
+        print(self.segment_embedding_matrix.shape)
+        print(len(self.segments))
+        print(len(self.reviews))
+        print(self.data.keys())
+        print([len(x) for x in self.data.values()])
+
     def _tokenize_for_spell(self, text):
         if not text:
             return []
