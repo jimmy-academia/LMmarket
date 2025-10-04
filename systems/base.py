@@ -19,6 +19,8 @@ from .encoder import Encoder
 import multiprocessing as mp
 mp.set_start_method("spawn", force=True)
 
+from debug import check
+
 class BaseSystem(Encoder):
     def __init__(self, args, data):
         super().__init__()
@@ -26,6 +28,8 @@ class BaseSystem(Encoder):
         self.data = data
         self.reviews = data['reviews']
         self._prepare_model()
+        self.segment_batch_size = 32
+
         self.result = {}
         symspell_path = args.clean_dir / f"symspell_{args.dset}.pkl"
         self.symspell = load_or_build(symspell_path, dumpp, loadp, self._build_symspell, self.reviews)
@@ -37,7 +41,6 @@ class BaseSystem(Encoder):
         embedding_payload = load_or_build(embedding_path, dumpp, loadp, self._build_segment_embeddings, self.segments)
         self._apply_segment_embeddings(embedding_payload)
 
-    
     def _tokenize_for_spell(self, text):
         if not text:
             return []
@@ -56,8 +59,12 @@ class BaseSystem(Encoder):
         if not reviews:
             return None
         counts = {}
-        for review in tqdm(reviews, ncols=88, desc="[base] _build_symspell"):
-            text = review.get("text")
+        for review in tqdm(reviews.values(), ncols=88, desc="[base] _build_symspell"):
+            try:
+                text = review.get("text")
+            except:
+                check()
+
             for token in self._tokenize_for_spell(text):
                 counts[token] = counts.get(token, 0) + 1
         if not counts:
@@ -89,7 +96,7 @@ class BaseSystem(Encoder):
         segment_lookup = {}
         review_segments = {}
         item_segments = {}
-        valid_reviews = [r for r in reviews if isinstance(r, dict) and r.get("text")]
+        valid_reviews = [r for r in reviews.values() if isinstance(r, dict) and r.get("text")]
         if not valid_reviews:
             result = {
                 "segments": segments,

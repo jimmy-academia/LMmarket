@@ -30,14 +30,12 @@ class DataHub:
                 break
 
     def _drop_short_reviews(self):
-        print(self.reviews)
         self.reviews = {rid: r for rid, r in self.reviews.items() if len(r.get("text", "")) >= self.min_review_chars}
-        input(len(self.reviews))
-    
+
     def _recompute_degrees(self):
         udeg, ideg = defaultdict(int), defaultdict(int)    
         for r in self.reviews.values():
-            uid, iid = r.get("uid"), r.get("iid")
+            uid, iid = r.get("user_id"), r.get("item_id")
             # Count only if both endpoints still exist
             if uid in self.users and iid in self.items:
                 udeg[uid] += 1
@@ -56,7 +54,7 @@ class DataHub:
 
     def _drop_dangling_reviews(self):
         prev_length = len(self.reviews)
-        self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("uid") in self.users and r.get("iid") in self.items}
+        self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("user_id") in self.users and r.get("item_id") in self.items}
         return prev_length != len(self.reviews)
 
     def postprocess(self):
