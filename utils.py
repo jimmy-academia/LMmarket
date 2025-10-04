@@ -119,11 +119,12 @@ def set_logging(verbose, log_dir, prefix='exp'):
 
 # % --- iteration ---
 
-def _iter_line(filepath, total=None):
+def _iter_line(filepath, total=None, desc=""):
     if total is None:
         with open(filepath, "r", encoding="utf-8") as f:
             total = sum(1 for _ in f)
 
+    desc = f"[iter_line: {desc}]"
     with open(filepath, "r", encoding="utf-8") as f:
-        for line in tqdm(f, total=total, ncols=90):
+        for line in tqdm(f, total=total, ncols=90, desc=desc):
             yield line

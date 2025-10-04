@@ -24,7 +24,7 @@ class YelpData(DataHub):
 
     def _load_restaurants(self):
         self.items = {}
-        for line in _iter_line(self.business_file, total=150_346):
+        for line in _iter_line(self.business_file, total=150_346, desc='business_file'):
             biz = json.loads(line)
             categories = biz.get("categories")
             if not categories or "restaurant" not in categories.lower():
@@ -34,7 +34,7 @@ class YelpData(DataHub):
 
     def _load_users(self):
         self.users = {}
-        for line in _iter_line(self.user_file, total = 1_987_897):
+        for line in _iter_line(self.user_file, total = 1_987_897, desc="user_file"):
             user = json.loads(line)
             user_id = user['user_id']
             self.users[user_id] = {"raw_info": user}
@@ -47,15 +47,15 @@ class YelpData(DataHub):
             (self.tip_file, "tip", 908_915)
         ]:
             tip_id = 0
-            for line in _iter_line(filepath, total=total):
+            for line in _iter_line(filepath, total=total, desc=kind+"_file"):
                 obj = json.loads(line)
                 item_id = obj["business_id"]
                 user_id = obj["user_id"]
-
+                text = obj["text"]
                 review_id = obj["review_id"] if kind == 'review' else f"tip_{tip_id}" 
                 tip_id += int(kind == 'tip')
                 
-                self.reviews[review_id] = {"item_id": item_id, "user_id": user_id, "raw_info": obj}
+                self.reviews[review_id] = {"item_id": item_id, "user_id": user_id, "raw_info": obj, "text": text}
 
     def postprocess(self, shrink_raw=True):
         

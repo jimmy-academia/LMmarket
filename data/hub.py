@@ -2,6 +2,7 @@
 from collections import defaultdict
 from pathlib import Path 
 from tqdm import tqdm
+import logging
 
 class DataHub:
     def __init__(self, dset_root):
@@ -24,11 +25,14 @@ class DataHub:
             changed |= self._prune_users_by_degree() # uses self.min_reviews_per_user
             changed |= self._prune_items_by_degree() # uses self.min_reviews_per_item
             changed |= self._drop_dangling_reviews() # remove reviews referencing pruned/missing u/i
+            logging.info("length >>> "+str([len(x) for x in [self.users, self.items, self.reviews]]))
             if not changed:
                 break
 
     def _drop_short_reviews(self):
+        print(self.reviews)
         self.reviews = {rid: r for rid, r in self.reviews.items() if len(r.get("text", "")) >= self.min_review_chars}
+        input(len(self.reviews))
     
     def _recompute_degrees(self):
         udeg, ideg = defaultdict(int), defaultdict(int)    
