@@ -1,19 +1,24 @@
+import logging
+from .base import BaseSystem
 from .method import HyperbolicSegmentSystem
 from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
 from .react import ReactRetrievalBaseline
 
 def build_system(args, data):
+    if args.system == 'base':
+        logging.info('[systems] >>> operating base class for init')
+        return BaseSystem(args, data)
     if args.system == 'sparse':
-        print('[systems] >>> operating BM25 retrieval baseline')
+        logging.info('[systems] >>> operating BM25 retrieval baseline')
         return BM25Baseline(args, data)
     if args.system == 'dense':
-        print('[systems] >>> operating dense retrieval baseline')
+        logging.info('[systems] >>> operating dense retrieval baseline')
         return DenseRetrieverBaseline(args, data)
     if args.system == 'react':
-        print('[systems] >>> operating react retrieval baseline')
+        logging.info('[systems] >>> operating react retrieval baseline')
         return ReactRetrievalBaseline(args, data)
     if args.system == 'method':
-        print('[systems] >>> operating hyperbolic segment method (mine)')
+        logging.info('[systems] >>> operating hyperbolic segment method (mine)')
         return HyperbolicSegmentSystem(args, data)
     raise ValueError(f"Unknown system '{args.system}'")

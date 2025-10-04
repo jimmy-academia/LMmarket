@@ -10,6 +10,8 @@ import numpy as np
 
 import logging
 from pathlib import Path
+from datetime import datetime
+from tqdm import tqdm 
 
 # % --- load and save functions ---
 def readf(path):
@@ -51,21 +53,22 @@ def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
     path = Path(path)
     exists = path.exists() if hasattr(path, "exists") else Path(path).exists()
     if exists:
-        print(f"[load_or_build] >>> {path} exists, loading...")
+        logging.info(f"[load_or_build] >>> {path} exists, loading...")
         return load_fn(path)
 
-    print(f"[load_or_build] >>> {path} does not exist, building...")
+    logging.info(f"[load_or_build] >>> {path} does not exist, building...")
     result = build_fn(*args, **kwargs)
-    print(f"[load_or_build] >>> saving build result to {path}...")
+    logging.info(f"[load_or_build] >>> saving build result to {path}...")
     save_fn(path, result)
-    print("[load_or_build] >>> saving complete.")
+    logging.info("[load_or_build] >>> saving complete.")
     return result
 
 # % --- ensures ---
 
 def _ensure_dir(_dir):
     _dir = Path(_dir)
-    _dir.mkdir(exists=True, parents=True)
+    _dir.mkdir(exist_ok=True, parents=True)
+    return _dir
 
 def _ensure_pathref(pathref):
     pathref = Path(pathref)

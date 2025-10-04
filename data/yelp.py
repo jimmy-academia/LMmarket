@@ -1,4 +1,5 @@
 # data/yelp.py
+import json
 from utils import _iter_line
 from .hub import DataHub
 from .geo import *
@@ -25,6 +26,7 @@ class YelpData(DataHub):
         self.items = {}
         for line in _iter_line(self.business_file, total=150_346):
             biz = json.loads(line)
+            categories = biz.get("categories")
             if not categories or "restaurant" not in categories.lower():
                 continue
             item_id = biz["business_id"]

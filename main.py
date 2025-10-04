@@ -15,16 +15,18 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='react')
+    parser.add_argument('--system', type=str, default='base')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
+    parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
     return parser.parse_args()
 
 def _resolve_args(args):
-    _ensure_dir(args.cache_dir)
-    _ensure_dir(args.logs_dir)
+    args.cache_dir = _ensure_dir(args.cache_dir)
+    args.logs_dir = _ensure_dir(args.logs_dir)
+    args.clean_dir = _ensure_dir(args.clean_dir)
     set_seeds(args.seed)
     set_logging(args.verbose, args.logs_dir)
 
@@ -42,29 +44,10 @@ def _resolve_args(args):
 def main():
     args = get_arguments()
     args = _resolve_args(args)
-    data = prepare_data(args)
+    args.prepared_data_path = args.clean_dir/f'{args.dset}_data.json'
+    data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
     system = build_system(args, data)
 
 
 if __name__ == '__main__':
     main()
-
-
-'''
-    parser.add_argument('--top_k', type=int, default=5)
-    parser.add_argument('--retrieve_k', type=int, default=500)
-    parser.add_argument('--bm25_top_m', type=int, default=3)
-def _seed_defaults(args):
-    args.div_name = 'default'
-    args.segment_batch_size = 32
-    args.min_user_location_reviews = 5
-    args.react_temperature = 0
-    args.react_summary_k = 3
-    args.encode_batch_size = 64
-    args.normalize_embeddings = True
-    args.top_l_segments = 3
-    args.top_docs = 3
-    args.faiss_topk = 256
-    args.segment_temperature = 0.1
-
-'''
