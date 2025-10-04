@@ -1,6 +1,7 @@
 # data/hub.py
 from collections import defaultdict
 from pathlib import Path 
+from tqdm import tqdm
 
 class DataHub:
     def __init__(self, dset_root):
@@ -17,7 +18,7 @@ class DataHub:
 
         self._drop_short_reviews()
 
-        for __ in range(self.max_clean_passes):
+        for __ in tqdm(range(self.max_clean_passes), ncols=88, desc='[clean_data]'):
             self._recompute_degrees()                # sets self._udeg / self._ideg from CURRENT reviews
             changed = False
             changed |= self._prune_users_by_degree() # uses self.min_reviews_per_user
@@ -26,11 +27,9 @@ class DataHub:
             if not changed:
                 break
 
-        self._normalize_review_texts()
-
     def _drop_short_reviews(self):
         self.reviews = {rid: r for rid, r in self.reviews.items() if len(r.get("text", "")) >= self.min_review_chars}
-            
+    
     def _recompute_degrees(self):
         udeg, ideg = defaultdict(int), defaultdict(int)    
         for r in self.reviews.values():
@@ -48,12 +47,12 @@ class DataHub:
 
     def _prune_items_by_degree(self):
         prev_length = len(self.items)
-        self.items = {i: rec for i, rec in items.items() if self._ideg.get(i, 0) >= self.min_reviews_per_item}
+        self.items = {i: rec for i, rec in self.items.items() if self._ideg.get(i, 0) >= self.min_reviews_per_item}
         return prev_length != len(self.items)
 
     def _drop_dangling_reviews(self):
         prev_length = len(self.reviews)
-        self.reviews = {rid: r for rid, r in reviews.items() if r.get("uid") in self.users and r.get("iid") in self.items}
+        self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("uid") in self.users and r.get("iid") in self.items}
         return prev_length != len(self.reviews)
 
     def postprocess(self):
