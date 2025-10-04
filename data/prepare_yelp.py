@@ -40,9 +40,9 @@ def prepare_yelp_data(dset_root):
     user_by_city = filter_user(users, user_city_counts)
     info_by_city = build_info_by_city(city_restaurants)
 
-    return build_city_payloads(entry_by_city, user_by_city, info_by_city)
-
-    # return {"USERS": user_by_city, "ITEMS": item_by_city, "REVIEWS": entry_by_city, "INFO": info_by_city}
+    payload = build_global_payloads(entry_by_city, user_by_city, info_by_city)
+    payload["schema"] = "yelp.v2.pooled"
+    return payload
 
 """
 Module functions
@@ -114,6 +114,10 @@ def load_entries(review_file, tip_file, biz_to_city):
                     "text": text,
                     "kind": kind,
                 }
+                for key in ("stars", "useful", "funny", "cool", "date"):
+                    value = obj.get(key)
+                    if value is not None:
+                        row[key] = value
                 entry_by_city[city].append(row)
                 users[uid].append(rid)
                 item_by_city[city][bid].append(rid)
@@ -158,105 +162,127 @@ def build_info_by_city(city_restaurants):
     return dict(info_by_city)
 
 
-def build_city_payloads(entry_by_city, user_by_city, info_by_city):
-    data = {}
+def build_global_payloads(entry_by_city, user_by_city, info_by_city):
+    users = {}
+    items = {}
+    reviews = {}
+
+    for city, city_info in info_by_city.items():
+        for item_id, meta in city_info.items():
+            coords = meta.get("coords")
+            lat = float(coords[0])
+            lon = float(coords[1])
+            raw = {}
+            for key, value in meta.items():
+                if key in ("coords", "name", "categories"):
+                    continue
+                raw[key] = value
+            item_entry = {
+                "review_ids": [],
+                "city": city,
+                "coords": (lat, lon),
+                "name": meta.get("name"),
+                "categories": meta.get("categories"),
+            }
+            if raw:
+                item_entry["raw"] = raw
+            items[item_id] = item_entry
+
     for city, entries in entry_by_city.items():
-        city_users = user_by_city[city]
-        assert isinstance(city_users, dict)
-        assert city in info_by_city
-        city_info = info_by_city[city]
-        reviews = []
-        review_ids = []
-        items = {}
+        city_users = user_by_city.get(city, {})
         for entry in entries:
-            rid = entry["review_id"]
             uid = entry["user_id"]
+            if uid not in city_users:
+                continue
+            rid = entry["review_id"]
             item_id = entry["item_id"]
+            if item_id not in items:
+                continue
             text = entry["text"].strip()
-            assert text
+            if not text:
+                continue
+            item_city = items[item_id]["city"]
             record = {
-                "review_id": rid,
                 "user_id": uid,
                 "item_id": item_id,
+                "city": item_city,
                 "text": text,
                 "kind": entry["kind"],
             }
-            reviews.append(record)
-            review_ids.append(rid)
-            items.setdefault(item_id, []).append(rid)
+            for key in ("stars", "useful", "funny", "cool", "date", "ts"):
+                if key in entry:
+                    target = "ts" if key in ("date", "ts") else key
+                    record[target] = entry[key]
+            reviews[rid] = record
+            items[item_id]["review_ids"].append(rid)
 
-        review_id_set = set(review_ids)
-        users = {}
+    review_city = {rid: record["city"] for rid, record in reviews.items()}
+    for city, city_users in user_by_city.items():
         for uid, rids in city_users.items():
-            cleaned = [rid for rid in rids if rid in review_id_set]
-            assert cleaned
-            users[uid] = cleaned
-
-        info = {}
-        for item_id in items.keys():
-            meta = dict(city_info[item_id])
-            coords = meta["coords"]
-            lat = float(coords[0])
-            lon = float(coords[1])
-            meta["coords"] = (lat, lon)
-            info[item_id] = meta
-
-        data[city] = {
-            "USERS": users,
-            "ITEMS": items,
-            "REVIEWS": reviews,
-            "INFO": info,
-        }
-    assert_city_payloads(data)
-    return data
-
-
-def assert_city_payloads(data):
-    assert isinstance(data, dict)
-    for city, payload in data.items():
-        assert isinstance(city, str) and city
-        assert isinstance(payload, dict)
-        reviews = payload["REVIEWS"]
-        users = payload["USERS"]
-        items = payload["ITEMS"]
-        info = payload["INFO"]
-        assert isinstance(reviews, list) and reviews
-        assert isinstance(users, dict)
-        assert isinstance(items, dict) and items
-        assert isinstance(info, dict) and info
-        review_ids = set()
-        for review in reviews:
-            assert isinstance(review, dict)
-            rid = review["review_id"]
-            uid = review["user_id"]
-            item_id = review["item_id"]
-            text = review["text"]
-            kind = review["kind"]
-            assert isinstance(rid, str) and rid
-            assert isinstance(uid, str) and uid
-            assert isinstance(item_id, str) and item_id
-            assert isinstance(text, str) and text
-            assert isinstance(kind, str) and kind
-            review_ids.add(rid)
-            assert rid in items[item_id]
-        for uid, rids in users.items():
-            assert isinstance(uid, str) and uid
-            assert isinstance(rids, list) and rids
+            valid = []
+            seen = set()
             for rid in rids:
-                assert rid in review_ids
-        for item_id, linked in items.items():
-            assert isinstance(item_id, str) and item_id
-            assert isinstance(linked, list) and linked
-            for rid in linked:
-                assert rid in review_ids
-            meta = info[item_id]
-            assert isinstance(meta, dict)
-            coords = meta["coords"]
-            assert isinstance(coords, tuple) and len(coords) == 2
-            lat, lon = coords
-            assert isinstance(lat, float)
-            assert isinstance(lon, float)
-    
+                if rid in reviews and rid not in seen:
+                    valid.append(rid)
+                    seen.add(rid)
+            if not valid:
+                continue
+            info = users.get(uid)
+            if not info:
+                info = {"review_ids": [], "city_hist": {}}
+                users[uid] = info
+            info["review_ids"].extend(valid)
 
-    
+    for uid, info in users.items():
+        seen = set()
+        cleaned = []
+        for rid in info["review_ids"]:
+            if rid in review_city and rid not in seen:
+                cleaned.append(rid)
+                seen.add(rid)
+        info["review_ids"] = cleaned
+        hist = {}
+        for rid in cleaned:
+            city = review_city[rid]
+            hist[city] = hist.get(city, 0) + 1
+        info["city_hist"] = hist
 
+    _assert_global_payloads(users, items, reviews)
+    return {"users": users, "items": items, "reviews": reviews}
+
+
+def _assert_global_payloads(users, items, reviews):
+    assert isinstance(users, dict) and isinstance(items, dict) and isinstance(reviews, dict)
+    for rid, record in reviews.items():
+        assert record["item_id"] in items
+        assert record["user_id"] in users
+        assert record["city"] == items[record["item_id"]]["city"]
+    for item_id, meta in items.items():
+        for rid in meta["review_ids"]:
+            assert rid in reviews
+    for uid, info in users.items():
+        for rid in info["review_ids"]:
+            assert rid in reviews
+
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dset_root", required=True)
+    args = parser.parse_args()
+    payload = prepare_yelp_data(Path(args.dset_root))
+    users = payload.get("users", {})
+    items = payload.get("items", {})
+    reviews = payload.get("reviews", {})
+    print(len(users), len(items), len(reviews))
+    sample_user = next(iter(users.items()), None)
+    sample_item = next(iter(items.items()), None)
+    sample_review = next(iter(reviews.items()), None)
+    if sample_user:
+        print("user", sample_user[0], sample_user[1])
+    if sample_item:
+        print("item", sample_item[0], sample_item[1])
+    if sample_review:
+        print("review", sample_review[0], sample_review[1])

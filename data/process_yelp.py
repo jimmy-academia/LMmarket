@@ -57,34 +57,52 @@ def _geometric_median(points):
     return (lat, lon)
 
 
-def _iter_user_points(user_ids, review_map, coord_map):
-    for rid in user_ids:
-        item_id = review_map[rid]
-        coord = coord_map[item_id]
-        yield coord
-
-
 def process_yelp_data(args, DATA):
-    min_reviews = getattr(args, "min_user_location_reviews", DEFAULT_MIN_REVIEWS)
+    if hasattr(args, "min_user_location_reviews"):
+        min_reviews = args.min_user_location_reviews
+    else:
+        min_reviews = DEFAULT_MIN_REVIEWS
     assert min_reviews > 0
-    user_loc = {}
-    for city, payload in DATA.items():
-        reviews = payload["REVIEWS"]
-        users = payload["USERS"]
-        info = payload["INFO"]
-        review_map = {entry["review_id"]: entry["item_id"] for entry in reviews}
-        coord_map = {item_id: meta["coords"] for item_id, meta in info.items()}
-        city_loc = {}
-        for uid, user_ids in users.items():
-            points = list(_iter_user_points(user_ids, review_map, coord_map))
-            assert len(points) >= min_reviews
-            center = _geometric_median(points)
-            distances = [max(_haversine_km(center, p), EPSILON) for p in points]
-            mean_distance = sum(distances) / len(distances)
-            city_loc[uid] = {
-                "center_lat": center[0],
-                "center_lon": center[1],
-                "lambda_per_km": 1.0 / mean_distance,
-            }
-        user_loc[city] = city_loc
-    return user_loc
+
+    reviews = DATA["reviews"]
+    items = DATA["items"]
+    users = DATA["users"]
+
+    review_to_item = {}
+    for rid, record in reviews.items():
+        item_id = record["item_id"]
+        if item_id in items:
+            review_to_item[rid] = item_id
+
+    item_to_coord = {}
+    for item_id, meta in items.items():
+        coord = meta.get("coords")
+        if coord:
+            item_to_coord[item_id] = coord
+
+    result = {}
+    for uid, info in users.items():
+        review_ids = info.get("review_ids") or []
+        points = []
+        for rid in review_ids:
+            item_id = review_to_item.get(rid)
+            if not item_id:
+                continue
+            coord = item_to_coord.get(item_id)
+            if not coord:
+                continue
+            points.append(coord)
+        if len(points) < min_reviews:
+            continue
+        center = _geometric_median(points)
+        distances = [max(_haversine_km(center, p), EPSILON) for p in points]
+        mean_distance = sum(distances) / len(distances)
+        if mean_distance <= 0.0:
+            continue
+        result[uid] = {
+            "center_lat": center[0],
+            "center_lon": center[1],
+            "lambda_per_km": 1.0 / mean_distance,
+        }
+
+    return result
