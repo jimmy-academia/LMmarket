@@ -29,7 +29,7 @@ class DataHub:
         self._normalize_review_texts()
 
     def _drop_short_reviews(self):
-        self.reviews = {rid: r for rid, r in self.reviews.items() if len(r.get("text", "")) >= min_chars}
+        self.reviews = {rid: r for rid, r in self.reviews.items() if len(r.get("text", "")) >= self.min_review_chars}
             
     def _recompute_degrees(self):
         udeg, ideg = defaultdict(int), defaultdict(int)    

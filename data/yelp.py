@@ -43,8 +43,8 @@ class YelpData(DataHub):
         self.reviews = {}
 
         for filepath, kind, total in [
-            (review_file, "review", 6_990_280), 
-            (tip_file, "tip", 908_915)
+            (self.review_file, "review", 6_990_280), 
+            (self.tip_file, "tip", 908_915)
         ]:
             tip_id = 0
             for line in _iter_line(filepath, total=total):
