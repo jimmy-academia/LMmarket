@@ -7,7 +7,7 @@ import logging
 class DataHub:
     def __init__(self, dset_root):
         self.dset_root = Path(dset_root)
-        self.max_clean_passes = 7
+        self.max_clean_passes = 3
         self.min_review_chars = 200
         self.min_reviews_per_user = 50
         self.min_reviews_per_item = 50

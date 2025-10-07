@@ -49,7 +49,7 @@ class Encoder:
         """
         all_encodings = {"input_ids": [], "attention_mask": [], "length": []}
 
-        for i in tqdm(range(0, len(texts), chunk_size), ncols=88, desc=f"[{self._model_name}] Tokenizing"):
+        for i in tqdm(range(0, len(texts), chunk_size), ncols=88, desc=f"[{self._model_name}] Tokenizing", leave=False):
             chunk = texts[i:i + chunk_size]
             enc = self.tokenizer(
                 chunk,
@@ -113,14 +113,14 @@ class Encoder:
             return bucket_bins[-1]
 
         buckets = defaultdict(list)
-        for i in tqdm(idxs, ncols=88, desc=f'[{self._model_name}] sorting buckets...'):
+        for i in tqdm(idxs, ncols=88, desc=f'[{self._model_name}] sorting buckets...', leave=False):
             buckets[which_bin(lengths[i])].append(i)
         print(f'[{self._model_name}] buckets built')
 
         # ---- encode per bucket ----
         vecs = [None] * len(texts)
         with torch.inference_mode():
-            for _, inds in tqdm(buckets.items(), ncols=88, desc=f'[{self._model_name}] encode'):
+            for _, inds in tqdm(buckets.items(), ncols=88, desc=f'[{self._model_name}] encode', leave=False):
                 for s in range(0, len(inds), batch_size):
                     sub = inds[s:s + batch_size]
                     sub_texts = [texts[i] for i in sub]

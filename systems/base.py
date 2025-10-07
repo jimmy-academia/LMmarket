@@ -30,6 +30,7 @@ class BaseSystem(Encoder):
         self.reviews = data['reviews']
         self._prepare_model()
         self.segment_batch_size = 32
+        self.flush_size = 10240
 
         self.result = {}
         symspell_path = args.clean_dir / f"symspell_{args.dset}.pkl"
@@ -236,7 +237,7 @@ class BaseSystem(Encoder):
             }
             batch_records.append(info)
             batch_texts.append(text)
-            if len(batch_texts) >= 256:
+            if len(batch_texts) >= self.flush_size:
                 flush(batch_records, batch_texts)
                 batch_records = []
                 batch_texts = []
@@ -298,7 +299,4 @@ class BaseSystem(Encoder):
         self.segment_embedding_matrix = matrix
         self.segment_embedding_dim = data.get("dimension")
         index_bytes = data.get("index")
-        if index_bytes:
-            self.segment_faiss_index = faiss.deserialize_index(index_bytes)
-        else:
-            self.segment_faiss_index = None
+        self.segment_faiss_index = faiss.deserialize_index( index_bytes)
