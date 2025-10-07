@@ -1,7 +1,7 @@
 from .base import BaseSystem
 from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
-from llm import query_llm, safe_json_parse
+from api import query_llm, safe_json_parse
 
 KEYWORD_PROMPT = """You are an expert retrieval strategist helping with restaurant review search.\nUser request: {request_text}\nPrevious keyword attempts: {previous_keywords}\nRecent retrieval takeaway: {retrieval_summary}\nReflection from the last step: {previous_reasoning}\nGuidance to follow now: {previous_summary}\nCompose fresh, focused search keywords that build on what has been learned while addressing the new guidance.\nReturn strict JSON with keys: keywords (array of 1-4 short keywords or phrases) and reasoning (one sentence describing why they were chosen)."""
 
