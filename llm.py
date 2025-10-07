@@ -185,31 +185,6 @@ def run_llm_batch(prompts, task_name, model="gpt-4.1-mini", temperature=0.1, num
     return asyncio.run(_runner())
 
 # ---- utils ----
-# def safe_json_parse(output_str):
-#     """
-#     Parse LLM output into a Python object.
-#     - Strips code fences / stray text.
-#     - Returns {} on failure.
-#     - Does NOT enforce a fixed schema; keeps whatever keys are present.
-#     """
-#     if not output_str:
-#         return {}
-
-#     s = output_str.strip()
-#     # remove code fences if present
-#     s = re.sub(r"^```(?:json)?", "", s)
-#     s = re.sub(r"```$", "", s).strip()
-
-#     try:
-#         data = json.loads(s)
-#     except Exception as e:
-#         logging.warning(f"JSON parse failed: {e} | text={s}...")
-#         return {}
-
-#     # only accept dicts/lists; otherwise return {}
-#     if isinstance(data, (dict, list)):
-#         return data
-#     return {}
 
 def safe_json_parse(output_str):
     """
