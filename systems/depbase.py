@@ -15,7 +15,7 @@ from pathlib import Path
 from utils import load_or_build, dumpp, loadp
 
 
-from .encoder import Encoder
+from networks.encoder import Encoder
 import multiprocessing as mp
 mp.set_start_method("spawn", force=True)
 
