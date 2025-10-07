@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 from transformers.utils import is_flash_attn_2_available
 
 from .base import BaseSystem
-from llm import run_llm_batch
+from api import run_llm_batch
 
 
 # =========================

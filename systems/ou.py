@@ -5,7 +5,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from .base import BaseSystem
-from llm import run_llm_batch, safe_json_parse
+from api import run_llm_batch, safe_json_parse
 
 from utils import load_or_build, dumpj
 

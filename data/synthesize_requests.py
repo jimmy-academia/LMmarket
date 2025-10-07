@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from utils import loadp, writef
-from llm import run_llm_batch
+from api import run_llm_batch
 
 KEYWORD_TASK = "segment_to_keyword"
 REQUEST_TASK = "keyword_bundle_to_request"
