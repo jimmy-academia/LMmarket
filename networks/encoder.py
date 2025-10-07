@@ -91,7 +91,7 @@ class Encoder:
         device = next(self.model.parameters()).device
 
         # ---- quick length pass (no padding) to build buckets ----
-        print(f'[{self._model_name}] building buckets...')
+        # print(f'[{self._model_name}] building buckets...')
         # len_enc = self.tokenizer(
         #     texts,
         #     padding=False,
@@ -115,7 +115,7 @@ class Encoder:
         buckets = defaultdict(list)
         for i in tqdm(idxs, ncols=88, desc=f'[{self._model_name}] sorting buckets...', leave=False):
             buckets[which_bin(lengths[i])].append(i)
-        print(f'[{self._model_name}] buckets built')
+        # print(f'[{self._model_name}] buckets built')
 
         # ---- encode per bucket ----
         vecs = [None] * len(texts)

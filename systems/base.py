@@ -84,7 +84,7 @@ class BaseSystem(Encoder):
         def flush(records, texts):
             if not texts:
                 return
-            logging.info(f"[base] encoding {len(texts)} segments")
+            # logging.info(f"[base] encoding {len(texts)} segments")
             embeds = self._model_encode(texts)
             for idx, vector in enumerate(embeds):
                 item = records[idx]
