@@ -1,7 +1,6 @@
 from symspellpy import SymSpell, Verbosity
 from tqdm import tqdm
 
-
 def tokenize_for_spell(text):
     if not text:
         return []
@@ -44,3 +43,10 @@ def correct_spelling(symspell, text):
         matches = symspell.lookup(word, Verbosity.CLOSEST)
         corrected.append(matches[0].term if matches else word)
     return " ".join(corrected)
+
+def fix_review(symspell, reviews):
+    fixed_reviews = {}
+    for rid, rev in tqdm(reviews.items(), ncols=88, desc="[base] apply symspell"):
+        fixed_reviews[rid] = {**rev, "text": correct_spelling(symspell, rev.get("text"))}
+    return fixed_reviews
+

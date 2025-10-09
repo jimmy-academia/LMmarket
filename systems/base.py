@@ -1,9 +1,9 @@
 import logging
 
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
-from networks.encoder import build_segment_embeddings, apply_segment_embeddings
-from networks.symspell import build_symspell, correct_spelling
+from networks.symspell import build_symspell, correct_spelling, fix_review
 from networks.segmenter import segment_reviews, apply_segment_data
+from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip
 
 from networks.aspect import aspect_splitter
 
@@ -15,9 +15,13 @@ class BaseSystem:
         self.segment_batch_size = 32
         self.flush_size = 10240
 
+        # % --- symspell fix typo ---
         symspell_path = args.clean_dir / f"symspell_{args.dset}.pkl"
         self.symspell = load_or_build(symspell_path, dumpp, loadp, build_symspell, self.reviews)
-
+        fixed_path = args.clean_dir / f"reviews_spellfix_{args.dset}.pkl"
+        self.reviews = load_or_build(fixed_path, dumpp, loadp, fix_review, self.symspell, self.reviews)
+        
+        # % --- segment any text segmentation ---
         segment_path = args.clean_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, segment_reviews, self.reviews, self.segment_batch_size)
         segments, lookup, review_segments, item_segments = apply_segment_data(segment_payload)
@@ -25,14 +29,13 @@ class BaseSystem:
         self.segment_lookup = lookup
         self.review_segments = review_segments
         self.item_segments = item_segments
+        self.segment_ids = [s["segment_id"] for s in self.segments]
 
-        embedding_path = args.clean_dir / f"segment_embeddings_{args.dset}.pkl"
-        embedding_payload = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, embedding_path self.flush_size)
-        matrix, index, entries, dim = apply_segment_embeddings(embedding_payload)
-        self.segment_embedding_matrix = matrix
-        self.segment_faiss_index = index
-        self.segment_embedding_entries = entries
-        self.segment_embedding_dim = dim
+        # % --- embedding ---
+        embedding_path = args.clean_dir / f"embeddings_{args.dset}.pkl"
+        self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args.device)
+        index_path = args.clean_dir / f"index_{args.dset}.pkl"
+        self.emb_index = load_or_build(index_path, build_faiss_ivfpq_ip, self.embedding, ids=self.segment_ids)
 
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)
