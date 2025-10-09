@@ -1,3 +1,4 @@
+import json
 from api import query_llm, user_struct, system_struct, assistant_struct
 
 system_prompt = """You extract concise aspect phrases from a single user request.
@@ -48,7 +49,7 @@ _SCHEMA = {
 }
 
 def aspect_splitter(request):
-    message = [system_struct(system_prompt), assistant_struct(FEW_SHOT_EXAMPLES), user_struct(user_temp)]
+    messages = [system_struct(system_prompt)]
 
     for inp, out_json in FEW_SHOT_EXAMPLES:
         messages.append(user_struct(user_temp.format(request_text=inp)))
@@ -57,5 +58,5 @@ def aspect_splitter(request):
 
     messages.append(user_struct(user_temp.format(request_text=request)))
 
-    response = query_llm(message, json_schema=_SCHEMA, use_json=True)
+    response = query_llm(messages, json_schema=_SCHEMA, use_json=True)
     return response
