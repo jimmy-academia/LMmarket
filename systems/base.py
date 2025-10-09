@@ -1,10 +1,11 @@
 import logging
 
-from utils import load_or_build, dumpp, loadp
+from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.encoder import build_segment_embeddings, apply_segment_embeddings
 from networks.symspell import build_symspell, correct_spelling
 from networks.segmenter import segment_reviews, apply_segment_data
 
+from networks.aspect import aspect_splitter
 
 class BaseSystem:
     def __init__(self, args, data):
@@ -26,18 +27,7 @@ class BaseSystem:
         self.item_segments = item_segments
 
         embedding_path = args.clean_dir / f"segment_embeddings_{args.dset}.pkl"
-        self.embedding_path = embedding_path
-        if embedding_path.exists():
-            logging.info(f"[base] loading embeddings from {embedding_path}")
-            embedding_payload = loadp(embedding_path)
-        else:
-            logging.info(f"[base] building embeddings → {embedding_path}")
-            embedding_payload = build_segment_embeddings(
-                self.segments,
-                embedding_path,
-                flush_size=self.flush_size,
-            )
-            dumpp(embedding_path, embedding_payload)
+        embedding_payload = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, embedding_path self.flush_size)
         matrix, index, entries, dim = apply_segment_embeddings(embedding_payload)
         self.segment_embedding_matrix = matrix
         self.segment_faiss_index = index
@@ -52,3 +42,13 @@ class BaseSystem:
 
     def get_segment(self, segment_id):
         return self.segment_lookup.get(segment_id)
+
+    # ==== test =====
+
+    def recommend(self, query):
+        print(query)
+        test_aspect_path = 'data/test_aspect.json'
+        aspect_list = load_or_build(test_aspect_path, dumpj, loadj, aspect_splitter, query)
+        print(aspect_list)
+
+        

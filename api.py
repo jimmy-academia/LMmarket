@@ -12,6 +12,10 @@ from tqdm.asyncio import tqdm as tqdm_asyncio
 
 from pathlib import Path
 
+user_struct = lambda x: {"role": "user", "content": x}
+system_struct = lambda x: {"role": "system", "content": x}
+assistant_struct = lambda x: {"role": "assistant", "content": x}
+
 # ---- clients ----
 openai_client = None
 async_openai_client = None
@@ -71,12 +75,25 @@ def _extract_usage(resp):
     ct = getattr(u, "completion_tokens", None) or (u.get("completion_tokens") if isinstance(u, dict) else 0) or 0
     return int(pt), int(ct)
 
+def prep_msg(prompt):
+    if type(prompt) == str:
+        messages = [user_struct(prompt)]
+    elif (
+        isinstance(prompt, list)
+        and prompt
+        and all(isinstance(x, dict) and {"role", "content"} <= x.keys() for x in prompt)
+    ):
+        return prompt
+    else:
+        raise ValueError("prompt must be a string or a list of {'role', 'content'} dicts")
+    return messages
+    
 # ---- query (sync) ----
 def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    messages = [{"role": "user", "content": prompt}]
+    message = prep_msg(prompt)
     kwargs = {"model": model, "messages": messages}
     if use_json:
         if json_schema:
@@ -109,7 +126,7 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         sem = asyncio.Semaphore(999999)
 
     async with sem:
-        messages = [{"role": "user", "content": prompt}]
+        messages = [user_struct(prompt)]
         kwargs = {"model": model, "messages": messages}
         if use_json:
             if json_schema:
@@ -250,7 +267,7 @@ def run_llm_batch_api(prompts, model="gpt-4.1-mini", temperature=0.1, verbose=Fa
     lines = []
     m_is_gpt5 = model.lower().startswith("gpt-5")
     for i, p in enumerate(prompts):
-        body = {"model": model, "messages": [{"role": "user", "content": p}]}
+        body = {"model": model, "messages": [user_struct(p)]}
         if not m_is_gpt5:
             body["temperature"] = temperature
         lines.append(json.dumps({
