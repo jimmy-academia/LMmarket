@@ -29,13 +29,13 @@ class BaseSystem:
         self.segment_lookup = lookup
         self.review_segments = review_segments
         self.item_segments = item_segments
-        self.segment_ids = [s["segment_id"] for s in self.segments]
+        # self.segment_ids = [s["segment_id"] for s in self.segments]
 
         # % --- embedding ---
         embedding_path = args.clean_dir / f"embeddings_{args.dset}.pkl"
         self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args.device)
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
-        self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding, ids=self.segment_ids)
+        self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
 
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)
