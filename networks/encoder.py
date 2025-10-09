@@ -41,10 +41,10 @@ def build_segment_embeddings(segments, device=None, batch_size=1024, show_progre
 
 ### faiss index
 
-def faiss_dump(index, path):
+def faiss_dump(path, index):
     faiss.write_index(index, str(path))
     return path
-
+    
 def faiss_load(path):
     return faiss.read_index(str(path))
 

@@ -1,6 +1,5 @@
 import logging
 from .base import BaseSystem
-from .method import HyperbolicSegmentSystem
 from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
 from .react import ReactRetrievalBaseline
