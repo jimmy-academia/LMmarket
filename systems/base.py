@@ -3,7 +3,7 @@ import logging
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.symspell import build_symspell, correct_spelling, fix_review
 from networks.segmenter import segment_reviews, apply_segment_data
-from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip
+from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip, faiss_dump, faiss_load
 
 from networks.aspect import aspect_splitter
 
@@ -35,7 +35,7 @@ class BaseSystem:
         embedding_path = args.clean_dir / f"embeddings_{args.dset}.pkl"
         self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args.device)
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
-        self.emb_index = load_or_build(index_path, build_faiss_ivfpq_ip, self.embedding, ids=self.segment_ids)
+        self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding, ids=self.segment_ids)
 
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)

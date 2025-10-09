@@ -1,5 +1,16 @@
 import torch
-import faiss
+# import faiss
+import warnings
+with warnings.catch_warnings():
+    # Case-insensitive match for all three SWIG types, from importlib bootstrap
+    warnings.filterwarnings(
+        "ignore",
+        message=r"(?i)builtin type (swigpyobject|swigpypacked|swigvarlink) has no __module__ attribute",
+        category=DeprecationWarning,
+        module=r"importlib\._bootstrap",
+    )
+    import faiss
+
 import numpy as np
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
@@ -25,6 +36,7 @@ def build_segment_embeddings(segments, device=None, batch_size=1024, show_progre
         embeddings.extend(batch_emb)
 
     matrix = np.asarray(embeddings, dtype="float32")
+    matrix = np.ascontiguousarray(matrix)
     return matrix
 
 ### faiss index
@@ -43,15 +55,20 @@ def _unwrap_ivf(index):
     if isinstance(base, faiss.IndexPreTransform): base = base.index
     return base  # should be IndexIVF
 
-def build_faiss_ivfpq_ip(embs: np.ndarray, nlist=8192, m=32, nbits=8, train_sz=300_000, ids=None, use_opq=True):
+def _add_with_progress(index, embs, ids=None, batch=100_000):
+    for i in tqdm(range(0, len(embs), batch), desc="[faiss] batch adding", ncols=88):
+        xb = embs[i:i+batch]
+        if ids is not None:
+            index.add_with_ids(xb, np.asarray(ids[i:i+batch], np.int64))
+        else:
+            index.add(xb)
+
+def build_faiss_ivfpq_ip(embs: np.ndarray, nlist=8192, m=32, nbits=8, train_sz=400_000, ids=None, use_opq=True):
     assert embs.dtype == np.float32 and embs.ndim == 2
     N, d = embs.shape
-    train_idx = np.random.choice(N, size=min(train_sz, N), replace=False)
-    train = embs[train_idx]
-
+    train = embs
     quantizer = faiss.IndexFlatIP(d)
     ivfpq = faiss.IndexIVFPQ(quantizer, d, nlist, m, nbits, faiss.METRIC_INNER_PRODUCT)
-
     if use_opq:
         opq = faiss.OPQMatrix(d, m)
         opq.train(train)
@@ -62,11 +79,10 @@ def build_faiss_ivfpq_ip(embs: np.ndarray, nlist=8192, m=32, nbits=8, train_sz=3
         index = ivfpq
 
     if ids is not None:
-        idmap = faiss.IndexIDMap2(index)
-        idmap.add_with_ids(embs, np.asarray(ids, np.int64))
-        index = idmap
+        index = faiss.IndexIDMap2(index)
+        _add_with_progress(index, embs, ids=ids)
     else:
-        index.add(embs)
+        _add_with_progress(index, embs, ids=None)
 
     _unwrap_ivf(index).nprobe = max(1, nlist // 80)  # ~1.25% lists
     return index
