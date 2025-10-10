@@ -29,7 +29,11 @@ class BaseSystem:
         # % --- segment any text segmentation ---
         segment_path = args.clean_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, segment_reviews, self.reviews, self.segment_batch_size)
-        self.segments, self.segment_lookup, self.review_segments, self.item_segments, self.item_reviews = [segment_payload.get(key) for key in ["segments", "segment_lookup", "review_segments", "item_segments", "item_reviews"]]
+        self.segments = segment_payload["segments"]
+        self.segment_lookup = segment_payload["segment_lookup"]
+        self.review_segments = segment_payload["review_segments"] 
+        self.item_segments = segment_payload["item_segments"] 
+        self.item_reviews = segment_payload["item_reviews"] 
 
         # % --- embedding ---
         self.embedder_name = "sentence-transformers/all-MiniLM-L6-v2"
@@ -37,11 +41,6 @@ class BaseSystem:
         self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args)
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
         self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
-
-        # rearrange data structure
-        self.item_reviews = defaultdict(list)
-        for review in self.reviews:
-            self.item_reviews[review['item_id']].append(review['review_id'])
 
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)
@@ -55,10 +54,10 @@ class BaseSystem:
     # ==== test =====
 
     def recommend(self, query):
-        print(query)
+        logging.info(query)
         test_aspect_path = 'data/test_aspect.json'
         aspect_list = load_or_build(test_aspect_path, dumpj, loadj, aspect_splitter, query)
-        print(aspect_list)
+        logging.info(aspect_list)
 
     def evaluate(self):
         logging.info(f'[Base] evaluating {self.args.system}')
@@ -68,6 +67,4 @@ class BaseSystem:
                 print(self.id2reviews[review_id]['text']+'\n')
                 input('>>> press any key for next review')
             input('>>> press any key for next item')  
-
-    def _encode_query(self):
 

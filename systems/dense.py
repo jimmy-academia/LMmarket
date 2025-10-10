@@ -1,5 +1,5 @@
 #dense.py
-
+import torch
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from .base import BaseSystem
@@ -13,7 +13,7 @@ class DenseRetrieverBaseline(BaseSystem):
         self.normalize = args.normalize
         self.encoder = SentenceTransformer(self.embedder_name, device=self.args.device)
 
-        self.item_length = {k: len(v) for k, v in self.item_segment .items()}
+        self.item_length = {k: len(v) for k, v in self.item_segments.items()}
 
     def _encode_query(self, text):
         with torch.no_grad():
