@@ -93,7 +93,7 @@ def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_s
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    message = prep_msg(prompt)
+    messages = prep_msg(prompt)
     kwargs = {"model": model, "messages": messages}
     if use_json:
         if json_schema:
