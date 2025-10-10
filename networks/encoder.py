@@ -2,7 +2,7 @@ import torch
 # import faiss
 import warnings
 with warnings.catch_warnings():
-    # Case-insensitive match for all three SWIG types, from importlib bootstrap
+    # remove sentence_transformer warnings
     warnings.filterwarnings(
         "ignore",
         message=r"(?i)builtin type (swigpyobject|swigpypacked|swigvarlink) has no __module__ attribute",
@@ -17,8 +17,6 @@ from sentence_transformers import SentenceTransformer
 
 def build_segment_embeddings(segments, args, batch_size=1024, show_progress=True):
     # embedder_name="sentence-transformers/all-MiniLM-L6-v2"
-    if not segments: raise ValueError("empty segments")
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = SentenceTransformer(args.embedder_name, device=args.device)
 
     it = range(0, len(segments), batch_size)
