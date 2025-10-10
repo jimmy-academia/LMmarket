@@ -21,6 +21,8 @@ def get_arguments():
     parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
+
+    parser.add_argument('--top_k', type=int, default=5)
     return parser.parse_args()
 
 def _resolve_args(args):
@@ -48,7 +50,7 @@ def main():
     data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
     system = build_system(args, data)
     system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
-
+    system.evaluate()
 
 if __name__ == '__main__':
     main()

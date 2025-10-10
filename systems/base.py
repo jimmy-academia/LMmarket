@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.symspell import build_symspell, correct_spelling, fix_review
@@ -8,12 +9,21 @@ from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip, fai
 from networks.aspect import aspect_splitter
 
 class BaseSystem:
+    '''
+    provides
+    self.reviews
+    self.segments
+        _id: {'item_id', 'user_id', 'raw_info', 'text'}
+    self.embedding (segments)
+    '''
     def __init__(self, args, data):
         self.args = args
         self.data = data
         self.reviews = data["reviews"]
         self.segment_batch_size = 32
         self.flush_size = 10240
+
+        self.top_k = args.top_k
 
         # % --- symspell fix typo ---
         symspell_path = args.clean_dir / f"symspell_{args.dset}.pkl"
@@ -37,6 +47,17 @@ class BaseSystem:
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
         self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
 
+        # rearrange data structure
+        reviews = []
+        for rev_id, review in self.reviews.items():
+            review['review_id'] = rev_id
+            reviews.append(review)
+        self.id2reviews = self.reviews
+        self.reviews = reviews
+        self.item_reviews = defaultdict(list)
+        for review in self.reviews:
+            self.item_reviews[review['item_id']].append(review['review_id'])
+
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)
 
@@ -54,4 +75,12 @@ class BaseSystem:
         aspect_list = load_or_build(test_aspect_path, dumpj, loadj, aspect_splitter, query)
         print(aspect_list)
 
-        
+    def evaluate(self):
+        logging.info(f'[Base] evaluating {self.args.system}')
+        for item_id in self.top_items:
+            logging.info(f'--- {item_id} --- >>> {self.request}\n')
+            for review_id in self.item_reviews[item_id]:
+                print(self.id2reviews[review_id]['text']+'\n')
+                input('>>> press any key for next review')
+            input('>>> press any key for next item')  
+
