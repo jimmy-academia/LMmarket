@@ -55,8 +55,8 @@ class DataHub:
     def _drop_dangling_reviews(self):
         # only prune review without item
         prev_length = len(self.reviews)
-        self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("item_id") in self.items}
-        # self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("user_id") in self.users and r.get("item_id") in self.items}
+        # self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("item_id") in self.items}
+        self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("user_id") in self.users and r.get("item_id") in self.items}
         return prev_length != len(self.reviews)
 
     def postprocess(self):

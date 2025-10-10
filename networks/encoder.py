@@ -14,15 +14,25 @@ with warnings.catch_warnings():
 import numpy as np
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
+from utils import loadp, dumpp
 
-def build_segment_embeddings(segments, args, batch_size=1024, show_progress=True):
+def build_segment_embeddings(segments, args, embedding_path, batch_size=1024, show_progress=True):
     # embedder_name="sentence-transformers/all-MiniLM-L6-v2"
     model = SentenceTransformer(args.embedder_name, device=args.device)
 
-    it = range(0, len(segments), batch_size)
-    if show_progress: it = tqdm(it, desc="[encoder] Encoding segments", ncols=88)
+    partial_path = embedding_path.with_name(embedding_path.name + ".partial")
+    partial_save_frequency = max(len(segments)//batch_size//10, 10)
+    
+    start_i, embeddings = 0, []
+    N = len(segments)
 
-    embeddings = []
+    if partial_path.exists():
+        embeddings = loadp(partial_path)
+        start_i = len(embeddings)
+
+    it = range(start_i, N, batch_size)
+    if show_progress: it = tqdm(it, desc=f"[encoder] from {start_i}", ncols=88)
+
     for i in it:
         batch = segments[i:i+batch_size]
         with torch.no_grad():
@@ -34,8 +44,14 @@ def build_segment_embeddings(segments, args, batch_size=1024, show_progress=True
             )
         embeddings.extend(batch_emb)
 
+        if ((i-start_i)//batch_size+1) % partial_save_frequency == 0:
+            dumpp(partial_path, embeddings)
+            if show_progress:
+                it.set_postfix(note=f"saved@{len(embeddings)//batch_size}")
+
     matrix = np.asarray(embeddings, dtype="float32")
     matrix = np.ascontiguousarray(matrix)
+    partial_path.unlink(missing_ok=True)
     return matrix
 
 ### faiss index
