@@ -15,10 +15,11 @@ import numpy as np
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 
-def build_segment_embeddings(segments, device=None, batch_size=1024, show_progress=True):
+def build_segment_embeddings(segments, args, batch_size=1024, show_progress=True):
+    # embedder_name="sentence-transformers/all-MiniLM-L6-v2"
     if not segments: raise ValueError("empty segments")
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=device)
+    model = SentenceTransformer(args.embedder_name, device=args.device)
 
     it = range(0, len(segments), batch_size)
     if show_progress: it = tqdm(it, desc="[encoder] Encoding segments", ncols=88)
@@ -30,7 +31,7 @@ def build_segment_embeddings(segments, device=None, batch_size=1024, show_progre
             batch_emb = model.encode(
                 batch,
                 convert_to_numpy=True,
-                normalize_embeddings=True,   # IP == cosine
+                normalize_embeddings=args.normalize,   # IP == cosine
                 show_progress_bar=False,
             )
         embeddings.extend(batch_emb)

@@ -15,15 +15,24 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='sparse')
+    parser.add_argument('--system', type=str, default='dense')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
     parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
+    parser.add_argument('--embedder_name', type=str, default="sentence-transformers/all-MiniLM-L6-v2")
+    parser.add_argument('--normalize', type=str, default="true")
 
     parser.add_argument('--top_k', type=int, default=5)
     return parser.parse_args()
+
+
+def _to_bool(v):
+    if v.lower() in ("yes", "true", "t", "1", "y"):
+        return True
+    elif v.lower() in ("no", "false", "f", "0", "n"):
+        return False
 
 def _resolve_args(args):
     args.cache_dir = _ensure_dir(args.cache_dir)
@@ -41,6 +50,7 @@ def _resolve_args(args):
         args.device = 0
     args.device = torch.device(f"cuda:{args.device}" if args.device >= 0 and torch.cuda.is_available() else "cpu")
 
+    args.normalize = _to_bool(args.normalize)
     return args 
 
 def main():

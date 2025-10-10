@@ -10,10 +10,6 @@ from debug import check
 class BM25Baseline(BaseSystem):
     def __init__(self, args, data, use_segment=False):
         super().__init__(args, data)
-        self.cache = {}
-        self.retrieve_k = 500
-        self.bm25_top_m = 3
-
         self.sequence = self.segments if use_segment else self.reviews
         item_div = self.item_segment if use_segment else self.item_reviews
         self.item_length = {k: len(v) for k, v in item_div.items()}
