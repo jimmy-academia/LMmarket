@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from .base import BaseSystem
+from collections import defaultdict
 
 class DenseRetrieverBaseline(BaseSystem):
     def __init__(self, args, data):

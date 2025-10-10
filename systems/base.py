@@ -62,7 +62,7 @@ class BaseSystem:
     def evaluate(self):
         logging.info(f'[Base] evaluating {self.args.system}')
         for item_id in self.top_items:
-            logging.info(f'--- {item_id} --- >>> {self.request}\n')
+            logging.info(f'--- {item_id} --- >>>\n')
             for review_id in self.item_reviews[item_id]:
                 print(self.id2reviews[review_id]['text']+'\n')
                 input('>>> press any key for next review')
