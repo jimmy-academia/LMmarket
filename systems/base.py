@@ -1,9 +1,13 @@
+import torch
 import logging
+import numpy as np
+
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.segmenter import segment_reviews
 from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip, faiss_dump, faiss_load
 
 from networks.aspect import aspect_splitter
+from sentence_transformers import SentenceTransformer
 
 class BaseSystem:
     '''
@@ -40,7 +44,27 @@ class BaseSystem:
         embedding_path = args.clean_dir / f"embeddings_{args.dset}.pkl"
         self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args, embedding_path)
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
-        self.emb_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
+        self.faiss_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
+
+        self.normalize = args.normalize
+        self.encoder = SentenceTransformer(self.embedder_name, device=self.args.device)
+
+    def _encode_query(self, text):
+        with torch.no_grad():
+            encoded = self.encoder.encode([text], normalize_embeddings=self.normalize, convert_to_numpy=True,)
+        
+        if isinstance(encoded, np.ndarray):
+            query = encoded[0]
+        else:
+            query = np.array(encoded)[0]
+        query = query.astype("float32", copy=False)
+        return query
+
+    def _get_top_k(self, query_vec, topk=3):
+        scores = self.embedding @ query_vec
+        order = np.argsort(scores)[::-1][:topk]
+        return scores, order
+
 
     def spellfix(self, text):
         return correct_spelling(self.symspell, text)

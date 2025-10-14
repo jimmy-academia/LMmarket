@@ -1,7 +1,5 @@
 #dense.py
-import torch
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from .base import BaseSystem
 from collections import defaultdict
 
@@ -11,21 +9,8 @@ class DenseRetrieverBaseline(BaseSystem):
         
         self.top_m = getattr(args, "dense_top_m", getattr(args, "bm25_top_m", 3))
         self.encode_batch_size = 64
-        self.normalize = args.normalize
-        self.encoder = SentenceTransformer(self.embedder_name, device=self.args.device)
-
         self.item_length = {k: len(v) for k, v in self.item_segments.items()}
-
-    def _encode_query(self, text):
-        with torch.no_grad():
-            encoded = self.encoder.encode([text], normalize_embeddings=self.normalize, convert_to_numpy=True,)
         
-        if isinstance(encoded, np.ndarray):
-            query = encoded[0]
-        else:
-            query = np.array(encoded)[0]
-        query = query.astype("float32", copy=False)
-        return query
 
     def recommend(self, request):
         query_vec = self._encode_query(request)

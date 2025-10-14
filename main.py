@@ -15,7 +15,7 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='dense')
+    parser.add_argument('--system', type=str, default='method')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
     parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
@@ -64,3 +64,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# I want a lively restaurant with great seafood, quick service, and outdoor seating, but it shouldn’t be too expensive.
