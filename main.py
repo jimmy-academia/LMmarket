@@ -21,7 +21,7 @@ def get_arguments():
     parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
-    parser.add_argument('--embedder_name', type=str, default="sentence-transformers/all-MiniLM-L6-v2")
+    parser.add_argument('--enc', type=str, default="f2llm")
     parser.add_argument('--normalize', type=str, default="true")
 
     parser.add_argument('--top_k', type=int, default=5)
@@ -33,6 +33,16 @@ def _to_bool(v):
         return True
     elif v.lower() in ("no", "false", "f", "0", "n"):
         return False
+
+MODEL_ALIASES = {
+    "mini": "sentence-transformers/all-MiniLM-L6-v2",
+    "ef": "intfloat/e5-large-v2",
+    "jina": "jinaai/jina-embeddings-v3",
+    "f2llm": "codefuse-ai/F2LLM-0.6B",
+    "f2llm-0.6b": "codefuse-ai/F2LLM-0.6B",
+    "f2llm-1.7b": "codefuse-ai/F2LLM-1.7B",
+    "f2llm-4b": "codefuse-ai/F2LLM-4B",
+}
 
 def _resolve_args(args):
     args.cache_dir = _ensure_dir(args.cache_dir)
@@ -51,6 +61,7 @@ def _resolve_args(args):
     args.device = torch.device(f"cuda:{args.device}" if args.device >= 0 and torch.cuda.is_available() else "cpu")
 
     args.normalize = _to_bool(args.normalize)
+    args.encoder_name = MODEL_ALIASES[args.enc]
     return args 
 
 def main():

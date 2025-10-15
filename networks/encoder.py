@@ -15,24 +15,18 @@ import numpy as np
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from utils import loadp, dumpp
+from transformers import AutoModel, AutoTokenizer
 
-F2_MODEL_ALIASES = {
-    "F2LLM-0.6B": "codefuse-ai/F2LLM-0.6B",
-    "F2LLM-1.7B": "codefuse-ai/F2LLM-1.7B",
-    "F2LLM-4B": "codefuse-ai/F2LLM-4B",
-}
-
-def _resolve_embedder_name(name):
-    if name in F2_MODEL_ALIASES:
-        return F2_MODEL_ALIASES[name]
-    return name
+def get_text_encoder(encoder_name, device):
+    encoderclass = F2Encoder if encoder_name.startswith("codefuse-ai/F2LLM") else SentenceTransformer
+    model = encoderclass(encoder_name, device = device)
+    return model
 
 class F2Encoder:
     def __init__(self, model_name, device):
-        from transformers import AutoModel, AutoTokenizer
-
+        
         self.device = torch.device(device if device else "cpu")
-        self.model_name = _resolve_embedder_name(model_name)
+        self.model_name = model_name
         dtype = torch.bfloat16 if self.device.type == "cuda" else torch.float32
         load_kwargs = {}
         if self.device.type == "cuda":
@@ -70,49 +64,6 @@ class F2Encoder:
             return emb.cpu().numpy()
         return emb
 
-def get_text_encoder(model_name, device):
-    resolved = _resolve_embedder_name(model_name)
-    if resolved.startswith("codefuse-ai/F2LLM"):
-        return F2Encoder(resolved, device)
-    return SentenceTransformer(resolved, device=device)
-
-def build_segment_embeddings(segments, args, embedding_path, batch_size=1024, show_progress=True):
-    # embedder_name="sentence-transformers/all-MiniLM-L6-v2"
-    model = get_text_encoder(args.embedder_name, args.device)
-
-    partial_path = embedding_path.with_name(embedding_path.name + ".partial")
-    partial_save_frequency = max(len(segments)//batch_size//10, 10)
-    
-    start_i, embeddings = 0, []
-    N = len(segments)
-
-    if partial_path.exists():
-        embeddings = loadp(partial_path)
-        start_i = len(embeddings)
-
-    it = range(start_i, N, batch_size)
-    if show_progress: it = tqdm(it, desc=f"[encoder] from {start_i}", ncols=88)
-
-    for i in it:
-        batch = segments[i:i+batch_size]
-        with torch.no_grad():
-            batch_emb = model.encode(
-                batch,
-                convert_to_numpy=True,
-                normalize_embeddings=args.normalize,   # IP == cosine
-                show_progress_bar=False,
-            )
-        embeddings.extend(batch_emb)
-
-        if ((i-start_i)//batch_size+1) % partial_save_frequency == 0:
-            dumpp(partial_path, embeddings)
-            if show_progress:
-                it.set_postfix(note=f"saved@{len(embeddings)//batch_size}")
-
-    matrix = np.asarray(embeddings, dtype="float32")
-    matrix = np.ascontiguousarray(matrix)
-    partial_path.unlink(missing_ok=True)
-    return matrix
 
 ### faiss index
 

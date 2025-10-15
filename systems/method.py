@@ -23,6 +23,9 @@ class MainMethod(BaseSystem):
             """
             print(gameplan)
 
+            print("self.rr")
+            check()
+
             raw = load_or_build(self.args.cache_dir/'temp_aspect_dict.json', dumpj, loadj, self.infer_aspects_weights, query)
             self.aspect_dict = raw if isinstance(raw, dict) else json.loads(raw)
             sum_weights = sum([float(a["weight"]) for a in self.aspect_dict["aspects"]])
