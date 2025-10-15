@@ -52,11 +52,18 @@ class BaseSystem:
 
         # self.normalize = args.normalize
 
-    def _encode_query(self, text, show=False):
+    def _encode_query(self, text, show=False, is_query=None):
         with torch.no_grad():
             if type(text) != list:
                 text = [text]
-            encoded = self.encoder.encode(text, normalize_embeddings=self.args.normalize, convert_to_numpy=True, show_progress_bar=show)
+            kw = dict(
+                normalize_embeddings=self.args.normalize,
+                convert_to_numpy=True,
+                show_progress_bar=show,
+            )
+            if is_query is not None:
+                kw["is_query"] = False
+            encoded = self.encoder.encode(text, **kw)
         return encoded
 
     def build_segment_embeddings(self, show_progress=True):
@@ -75,7 +82,7 @@ class BaseSystem:
         for i in it:
             batch = self.segments[i:i+self.batch_size]
             batch = [seg['text'] for seg in batch]
-            embeddings.extend(self._encode_query(batch))
+            embeddings.extend(self._encode_query(batch, is_query=False))
 
             if ((i-start_i)//self.batch_size+1) % partial_save_frequency == 0:
                 dumpp(partial_path, embeddings)

@@ -1,6 +1,14 @@
+import logging
+import numpy as np
+from functools import partial
+
 import torch
 import torch.nn.functional as F
+
+from tqdm import tqdm
+
 # import faiss
+
 import warnings
 with warnings.catch_warnings():
     # remove sentence_transformer warnings
@@ -10,18 +18,58 @@ with warnings.catch_warnings():
         category=DeprecationWarning,
         module=r"importlib\._bootstrap",
     )
-    import faiss
+    # import faiss
 
-import numpy as np
-from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-from utils import loadp, dumpp
 from transformers import AutoModel, AutoTokenizer
+
+from utils import loadp, dumpp
+
+
+def mute_flash_attn_warning():
+    class _FlashFilter(logging.Filter):
+        def filter(self, record):
+            return "flash_attn is not installed" not in record.getMessage()
+
+    # Hit the usual sources
+    for name in ("py.warnings", "transformers", "sentence_transformers"):
+        logging.getLogger(name).addFilter(_FlashFilter())
+
+    # Also attach to existing handlers in case the warning
+    # is bubbling to root via handlers only
+    for h in logging.getLogger().handlers:
+        h.addFilter(_FlashFilter())
 
 def get_text_encoder(encoder_name, device):
     encoderclass = F2Encoder if encoder_name.startswith("codefuse-ai/F2LLM") else SentenceTransformer
+    if "jina" in encoder_name:
+        mute_flash_attn_warning()
+        encoderclass = partial(encoderclass, trust_remote_code=True)
     model = encoderclass(encoder_name, device = device)
+    if "jina" in encoder_name:
+        model = JinaAdapter(model)
     return model
+
+
+class JinaAdapter:
+    """SentenceTransformer subclass for Jina embeddings with automatic prompt selection."""
+
+    def __init__(self, model):
+        # always trust remote code for Jina models
+        self.model = model
+    def encode(self, *args, **kwargs):
+        # handle encode(is_query, texts, ...) OR encode(texts, is_query=False, ...)
+        is_query = True
+        if args and isinstance(args[0], bool):
+            is_query = args[0]
+            args = args[1:]
+        if "is_query" in kwargs:
+            is_query = kwargs.pop("is_query")
+
+        prompt_name = "retrieval.query" if is_query else "retrieval.passage"
+        kwargs.setdefault("prompt_name", prompt_name)
+        return self.model.encode(*args, **kwargs)
+
 
 class F2Encoder:
     def __init__(self, model_name, device):
