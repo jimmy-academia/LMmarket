@@ -4,10 +4,9 @@ import numpy as np
 
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.segmenter import segment_reviews
-from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip, faiss_dump, faiss_load
+from networks.encoder import build_segment_embeddings, build_faiss_ivfpq_ip, faiss_dump, faiss_load, get_text_encoder
 
 from networks.aspect import aspect_splitter
-from sentence_transformers import SentenceTransformer
 
 class BaseSystem:
     '''
@@ -40,14 +39,14 @@ class BaseSystem:
         self.item_reviews = segment_payload["item_reviews"] 
 
         # % --- embedding ---
-        self.embedder_name = "sentence-transformers/all-MiniLM-L6-v2"
+        self.embedder_name = self.args.embedder_name
         embedding_path = args.clean_dir / f"embeddings_{args.dset}.pkl"
         self.embedding = load_or_build(embedding_path, dumpp, loadp, build_segment_embeddings, self.segments, self.args, embedding_path)
         index_path = args.clean_dir / f"index_{args.dset}.pkl"
         self.faiss_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
 
         self.normalize = args.normalize
-        self.encoder = SentenceTransformer(self.embedder_name, device=self.args.device)
+        self.encoder = get_text_encoder(self.embedder_name, self.args.device)
 
     def _encode_query(self, text):
         with torch.no_grad():

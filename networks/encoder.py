@@ -16,9 +16,69 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from utils import loadp, dumpp
 
+F2_MODEL_ALIASES = {
+    "F2LLM-0.6B": "codefuse-ai/F2LLM-0.6B",
+    "F2LLM-1.7B": "codefuse-ai/F2LLM-1.7B",
+    "F2LLM-4B": "codefuse-ai/F2LLM-4B",
+}
+
+def _resolve_embedder_name(name):
+    if name in F2_MODEL_ALIASES:
+        return F2_MODEL_ALIASES[name]
+    return name
+
+class F2Encoder:
+    def __init__(self, model_name, device):
+        from transformers import AutoModel, AutoTokenizer
+
+        self.device = torch.device(device if device else "cpu")
+        self.model_name = _resolve_embedder_name(model_name)
+        dtype = torch.bfloat16 if self.device.type == "cuda" else torch.float32
+        load_kwargs = {}
+        if self.device.type == "cuda":
+            load_kwargs["torch_dtype"] = dtype
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.model = AutoModel.from_pretrained(self.model_name, **load_kwargs)
+        self.model.to(self.device)
+        self.model.eval()
+
+    def encode(self, texts, normalize_embeddings=False, convert_to_numpy=True, show_progress_bar=False):
+        import torch.nn.functional as F
+
+        if not texts:
+            return np.zeros((0, self.model.config.hidden_size), dtype="float32")
+        seqs = []
+        eos = self.tokenizer.eos_token or ""
+        for t in texts:
+            seqs.append(t + eos)
+        batch = self.tokenizer(
+            seqs,
+            padding=True,
+            return_tensors="pt",
+            add_special_tokens=False,
+        )
+        batch = {k: v.to(self.device) for k, v in batch.items()}
+        with torch.inference_mode():
+            hidden = self.model(**batch).last_hidden_state
+        eos_pos = batch["attention_mask"].sum(dim=1) - 1
+        idx = torch.arange(len(seqs), device=self.device)
+        emb = hidden[idx, eos_pos]
+        if normalize_embeddings:
+            emb = F.normalize(emb, p=2, dim=1)
+        emb = emb.float()
+        if convert_to_numpy:
+            return emb.cpu().numpy()
+        return emb
+
+def get_text_encoder(model_name, device):
+    resolved = _resolve_embedder_name(model_name)
+    if resolved.startswith("codefuse-ai/F2LLM"):
+        return F2Encoder(resolved, device)
+    return SentenceTransformer(resolved, device=device)
+
 def build_segment_embeddings(segments, args, embedding_path, batch_size=1024, show_progress=True):
     # embedder_name="sentence-transformers/all-MiniLM-L6-v2"
-    model = SentenceTransformer(args.embedder_name, device=args.device)
+    model = get_text_encoder(args.embedder_name, args.device)
 
     partial_path = embedding_path.with_name(embedding_path.name + ".partial")
     partial_save_frequency = max(len(segments)//batch_size//10, 10)
