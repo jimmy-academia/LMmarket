@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 # import faiss
 import warnings
 with warnings.catch_warnings():
@@ -37,10 +38,7 @@ class F2Encoder:
         self.model.eval()
 
     def encode(self, texts, normalize_embeddings=False, convert_to_numpy=True, show_progress_bar=False):
-        import torch.nn.functional as F
 
-        if not texts:
-            return np.zeros((0, self.model.config.hidden_size), dtype="float32")
         seqs = []
         eos = self.tokenizer.eos_token or ""
         for t in texts:

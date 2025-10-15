@@ -42,6 +42,9 @@ class BaseSystem:
         self.encoder = get_text_encoder(self.args.encoder_name, self.args.device)
 
         self.embedding_path = args.clean_dir / f"embeddings_{args.dset}_{args.enc}.pkl"
+        self.batch_size = 32
+        if self.args.enc == 'mini':
+            self.batch_size = 1024
         self.embedding = load_or_build(self.embedding_path, dumpp, loadp, self.build_segment_embeddings)
         # % --- faiss ---
         # index_path = args.clean_dir / f"index_{args.dset}.pkl"
@@ -56,27 +59,28 @@ class BaseSystem:
             encoded = self.encoder.encode(text, normalize_embeddings=self.args.normalize, convert_to_numpy=True, show_progress_bar=show)
         return encoded
 
-    def build_segment_embeddings(self, batch_size=1024, show_progress=True):
+    def build_segment_embeddings(self, show_progress=True):
         
         start_i, embeddings, N = 0, [], len(self.segments)
 
         partial_path = self.embedding_path.with_name(self.embedding_path.name + ".partial")
-        partial_save_frequency = max(N//batch_size//10, 10)
+        partial_save_frequency = max(N//self.batch_size//10, 10)
         if partial_path.exists():
             embeddings = loadp(partial_path)
             start_i = len(embeddings)
 
-        it = range(start_i, N, batch_size)
+        it = range(start_i, N, self.batch_size)
         if show_progress: it = tqdm(it, desc=f"[encoder] from {start_i}", ncols=88)
 
         for i in it:
-            batch = self.segments[i:i+batch_size]
+            batch = self.segments[i:i+self.batch_size]
+            batch = [seg['text'] for seg in batch]
             embeddings.extend(self._encode_query(batch))
 
-            if ((i-start_i)//batch_size+1) % partial_save_frequency == 0:
+            if ((i-start_i)//self.batch_size+1) % partial_save_frequency == 0:
                 dumpp(partial_path, embeddings)
                 if show_progress:
-                    it.set_postfix(note=f"saved@{len(embeddings)//batch_size}")
+                    it.set_postfix(note=f"saved@{len(embeddings)//self.batch_size}")
 
         matrix = np.asarray(embeddings, dtype="float32")
         matrix = np.ascontiguousarray(matrix)
