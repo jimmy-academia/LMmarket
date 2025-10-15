@@ -52,18 +52,35 @@ class BaseSystem:
     def _encode_query(self, text):
         with torch.no_grad():
             encoded = self.encoder.encode([text], normalize_embeddings=self.normalize, convert_to_numpy=True,)
-        
-        if isinstance(encoded, np.ndarray):
-            query = encoded[0]
-        else:
-            query = np.array(encoded)[0]
-        query = query.astype("float32", copy=False)
+        query = np.asarray(encoded)[0].astype("float32", copy=False)
         return query
 
     def _get_top_k(self, query_vec, topk=3):
         scores = self.embedding @ query_vec
         order = np.argsort(scores)[::-1][:topk]
         return scores, order
+
+    def retrieve_similar_segments(self, sentence, topk=None):
+        if not sentence:
+            return []
+        if not self.segments:
+            return []
+        query_vec = self._encode_query(sentence)
+        limit = topk or self.top_k or 1
+        if limit > len(self.segments):
+            limit = len(self.segments)
+        scores, order = self._get_top_k(query_vec, limit)
+        results = []
+        for idx in order:
+            segment = self.segments[idx]
+            results.append({
+                "segment": segment,
+                "score": float(scores[idx])
+            })
+            text = segment.get("text")
+            if text:
+                print(text)
+        return results
 
 
     def spellfix(self, text):
