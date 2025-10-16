@@ -48,7 +48,7 @@ class BaseSystem:
         self.embedding = load_or_build(self.embedding_path, dumpp, loadp, self.build_segment_embeddings)
 
         # % --- faiss ---
-        index_path = args.clean_dir / f"index_{args.dset}.pkl"
+        index_path = args.clean_dir / f"index_{args.dset}_{args.enc}.pkl"
         self.faiss_index, self.faiss_ctx = load_or_build(index_path, faiss_dump, faiss_load, build_faiss, self.embedding)
         self.faiss_search = partial(faiss_search, ctx=self.faiss_ctx)
 
