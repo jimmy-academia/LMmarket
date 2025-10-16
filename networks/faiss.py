@@ -9,7 +9,7 @@ with warnings.catch_warnings():
     )
     import faiss
 import numpy as np
-from tqdm import tqdm  # needed for _add_with_progress
+from tqdm import tqdm 
 
 from utils import dumpj, loadj
 
@@ -23,18 +23,17 @@ def faiss_dump(path, payload):
 def faiss_load(path):
     return (faiss.read_index(str(path)), loadj(path.with_suffix(".json")))
 
-def _add_with_progress(index, embedding, ids=None, batch=100_000):
-    batch = 25
+def _add_with_progress(index, embedding, ids, batch=100_000):
     for i in tqdm(range(0, len(embedding), batch), desc="[faiss] batch adding", ncols=88):
         xb = embedding[i:i+batch]
-        if ids is not None:
-            index.add_with_ids(xb, np.asarray(ids[i:i+batch], np.int64))
-        else:
-            index.add(xb)
+        index.add_with_ids(xb, np.asarray(ids[i:i+batch], np.int64))
+        # else:
+            # index.add(xb)
 
 # ---------- 1) build ----------
 # method: "hnsw" | "ivf_flat" | "flat"
 # metric: "cosine" | "ip" | "l2"
+
 def build_faiss(
     embedding,
     method="flat",
@@ -103,7 +102,7 @@ def build_faiss(
 
     return index, ctx
 
-def faiss_search(Xq, index, ctx, k=10, ef_search=None, nprobe=None, refine=True, embedding=None):
+def faiss_search(Xq, index, ctx, k=10, ef_search=None, nprobe=None, refine=True, embedding=None, xb_sq=None):
     """
     Perform FAISS search with optional exact rerank.
     embedding: the full corpus embedding (needed only if refine=True)
@@ -138,7 +137,7 @@ def faiss_search(Xq, index, ctx, k=10, ef_search=None, nprobe=None, refine=True,
     row_by_id = {int(ids[i]): i for i in range(len(ids))}
 
     # precompute xb_sq only if needed
-    xb_sq = (xb**2).sum(axis=1).astype(np.float32) if metric == "l2" else None
+    # xb_sq = (xb**2).sum(axis=1).astype(np.float32) if metric == "l2" else None
 
     Q, _ = xq.shape
     D = np.empty((Q, k), dtype=np.float32)

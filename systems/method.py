@@ -3,7 +3,6 @@ import logging
 from api import query_llm, user_struct, system_struct, assistant_struct
 from utils import load_or_build, dumpj, loadj
 from .base import BaseSystem
-from debug import check
 
 class MainMethod(BaseSystem):
         def __init__(self, args, data):
@@ -22,10 +21,7 @@ class MainMethod(BaseSystem):
             3. positive negative cutoff. 
             """
             print(gameplan)
-
-            print("self.rr")
-            check()
-
+            
             raw = load_or_build(self.args.cache_dir/'temp_aspect_dict.json', dumpj, loadj, self.infer_aspects_weights, query)
             self.aspect_dict = raw if isinstance(raw, dict) else json.loads(raw)
             sum_weights = sum([float(a["weight"]) for a in self.aspect_dict["aspects"]])
@@ -44,8 +40,6 @@ class MainMethod(BaseSystem):
                 topk = 100
                 scores, idxs = self._get_top_k(asp_query, topk)
                 # scrores, idxs = self.faiss_index.search(query.reshape(1, -1), topk)
-                check()
-
                 segments = [self.segments[idx] for idx in idxs]
 
 

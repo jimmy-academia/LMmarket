@@ -11,6 +11,7 @@ from networks.aspect import aspect_splitter
 from functools import partial
 from tqdm import tqdm
 
+from debug import check
 class BaseSystem:
     '''
     provides
@@ -53,9 +54,15 @@ class BaseSystem:
         # % --- faiss ---
         fpath = args.clean_dir/f"faiss_{args.dset}_{args.enc}.index"
         index, ctx = load_or_build(fpath, faiss_dump, faiss_load, build_faiss, self.embedding)
+        xb_sq = None
+        if ctx["metric"] == "l2":
+            xb = np.ascontiguousarray(self.embedding.astype(np.float32, copy=False))
+            xb_sq = (xb**2).sum(axis=1).astype(np.float32) 
+        self.faiss_search = partial(faiss_search, ctx=ctx, index=index, embedding=self.embedding, xb_sq=xb_sq)
 
-        self.faiss_search = partial(faiss_search, ctx=ctx, index=index, embedding=self.embedding)
+        check()
 
+        
     def _encode_query(self, text, show=False, is_query=None):
         with torch.no_grad():
             if type(text) != list:
@@ -115,17 +122,10 @@ class BaseSystem:
         query_vec = self._encode_query(query)
         query_vec = np.asarray(query_vec, dtype=np.float32).reshape(-1)
         query_vec /= (np.linalg.norm(query_vec) + 1e-12)
-        limit = topk or self.top_k or 1
-        if limit > len(self.segments):
-            limit = len(self.segments)
+        limit = min(topk or self.top_k or 1, len(self.segments))
         scores, order = self._get_top_k(query_vec, limit, faiss)
-        results = []
-        for idx in order:
+        for score, idx in zip(scores, order):
             segment = self.segments[idx]
-            results.append({
-                "segment": segment,
-                "score": float(scores[idx])
-            })
             text = segment.get("text")
             if text:
                 print(text)
