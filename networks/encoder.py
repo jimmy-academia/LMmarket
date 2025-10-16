@@ -7,16 +7,6 @@ import torch.nn.functional as F
 
 from tqdm import tqdm
 
-import warnings
-with warnings.catch_warnings():
-    # remove sentence_transformer warnings
-    warnings.filterwarnings(
-        "ignore",
-        message=r"(?i)builtin type (swigpyobject|swigpypacked|swigvarlink) has no __module__ attribute",
-        category=DeprecationWarning,
-        module=r"importlib\._bootstrap",
-    )
-
 from sentence_transformers import SentenceTransformer
 from transformers import AutoModel, AutoTokenizer
 

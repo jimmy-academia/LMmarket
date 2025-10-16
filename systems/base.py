@@ -5,6 +5,7 @@ import numpy as np
 from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.segmenter import segment_reviews
 from networks.encoder import get_text_encoder
+from networks.faiss import faiss_dump, faiss_load, build_faiss, faiss_search
 
 from networks.aspect import aspect_splitter
 from tqdm import tqdm
@@ -50,7 +51,7 @@ class BaseSystem:
         # % --- faiss ---
         index_path = args.clean_dir / f"index_{args.dset}_{args.enc}.pkl"
         self.faiss_index, self.faiss_ctx = load_or_build(index_path, faiss_dump, faiss_load, build_faiss, self.embedding)
-        self.faiss_search = partial(faiss_search, ctx=self.faiss_ctx)
+        self.faiss_search = partial(faiss_search, ctx=self.faiss_ctx, index=self.faiss_index)
 
         self.normalize = args.normalize
 
@@ -96,22 +97,27 @@ class BaseSystem:
         partial_path.unlink(missing_ok=True)
         return matrix
 
-    def _get_top_k(self, query_vec, topk=3):
-        scores = self.embedding @ query_vec
-        order = np.argsort(scores)[::-1][:topk]
+    def _get_top_k(self, query_vec, topk=3, faiss=True):
+        if faiss:
+            D, I = self.faiss_search(query_vec.reshape(1, -1), k=topk)
+            scores, order = D[0], I[0]
+        else:
+            scores = self.embedding @ query_vec
+            order = np.argsort(scores)[::-1][:topk]
+            scores = scores[order]
         return scores, order
 
-    def rr(self, sentence):
-        self.retrieve_similar_segments(sentence, 10)
+    def rr(self, *args, **kwargs):
+        self.retrieve_similar_segments(*args, **kwargs)
 
-    def retrieve_similar_segments(self, sentence, topk=None):
-        query_vec = self._encode_query(sentence)
+    def retrieve_similar_segments(self, query, topk=None, faiss=True):
+        query_vec = self._encode_query(query)
         query_vec = np.asarray(query_vec, dtype=np.float32).reshape(-1)
         query_vec /= (np.linalg.norm(query_vec) + 1e-12)
         limit = topk or self.top_k or 1
         if limit > len(self.segments):
             limit = len(self.segments)
-        scores, order = self._get_top_k(query_vec, limit)
+        scores, order = self._get_top_k(query_vec, limit, faiss)
         results = []
         for idx in order:
             segment = self.segments[idx]

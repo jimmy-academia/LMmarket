@@ -1,4 +1,13 @@
-import faiss
+import warnings
+with warnings.catch_warnings():
+    # remove faiss warnings
+    warnings.filterwarnings(
+        "ignore",
+        message=r"(?i)builtin type (swigpyobject|swigpypacked|swigvarlink) has no __module__ attribute",
+        category=DeprecationWarning,
+        module=r"importlib\._bootstrap",
+    )
+    import faiss
 import numpy as np
 from tqdm import tqdm  # needed for _add_with_progress
 
@@ -11,7 +20,7 @@ def faiss_dump(path, payload):
     return path
 
 def faiss_load(path):
-    return faiss.read_index(str(path)), loadj(path.with_suffix(.json))
+    return faiss.read_index(str(path)), loadj(path.with_suffix(".json"))
 
 def _unwrap_ivf(index):
     base = index
