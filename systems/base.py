@@ -6,9 +6,11 @@ from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.segmenter import segment_reviews
 from networks.encoder import get_text_encoder
 from networks.faiss import faiss_dump, faiss_load, build_faiss, faiss_search
-
 from networks.aspect import aspect_splitter
+
+from functools import partial
 from tqdm import tqdm
+
 class BaseSystem:
     '''
     provides
@@ -49,11 +51,10 @@ class BaseSystem:
         self.embedding = load_or_build(self.embedding_path, dumpp, loadp, self.build_segment_embeddings)
 
         # % --- faiss ---
-        index_path = args.clean_dir / f"index_{args.dset}_{args.enc}.pkl"
-        self.faiss_index, self.faiss_ctx = load_or_build(index_path, faiss_dump, faiss_load, build_faiss, self.embedding)
-        self.faiss_search = partial(faiss_search, ctx=self.faiss_ctx, index=self.faiss_index)
+        fpath = args.clean_dir/f"faiss_{args.dset}_{args.enc}.index"
+        index, ctx = load_or_build(fpath, faiss_dump, faiss_load, build_faiss, self.embedding)
 
-        self.normalize = args.normalize
+        self.faiss_search = partial(faiss_search, ctx=ctx, index=index, embedding=self.embedding)
 
     def _encode_query(self, text, show=False, is_query=None):
         with torch.no_grad():
