@@ -46,11 +46,13 @@ class BaseSystem:
         if self.args.enc == 'mini':
             self.batch_size = 1024
         self.embedding = load_or_build(self.embedding_path, dumpp, loadp, self.build_segment_embeddings)
-        # % --- faiss ---
-        # index_path = args.clean_dir / f"index_{args.dset}.pkl"
-        # self.faiss_index = load_or_build(index_path, faiss_dump, faiss_load, build_faiss_ivfpq_ip, self.embedding)
 
-        # self.normalize = args.normalize
+        # % --- faiss ---
+        index_path = args.clean_dir / f"index_{args.dset}.pkl"
+        self.faiss_index, self.faiss_ctx = load_or_build(index_path, faiss_dump, faiss_load, build_faiss, self.embedding)
+        self.faiss_search = partial(faiss_search, ctx=self.faiss_ctx)
+
+        self.normalize = args.normalize
 
     def _encode_query(self, text, show=False, is_query=None):
         with torch.no_grad():
@@ -104,7 +106,8 @@ class BaseSystem:
 
     def retrieve_similar_segments(self, sentence, topk=None):
         query_vec = self._encode_query(sentence)
-        query_vec = np.asarray(query_vec)[0].astype("float32", copy=False)
+        query_vec = np.asarray(query_vec, dtype=np.float32).reshape(-1)
+        query_vec /= (np.linalg.norm(query_vec) + 1e-12)
         limit = topk or self.top_k or 1
         if limit > len(self.segments):
             limit = len(self.segments)
