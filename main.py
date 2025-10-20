@@ -70,8 +70,8 @@ def main():
     args.prepared_data_path = args.clean_dir/f'{args.dset}_data.json'
     data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
     system = build_system(args, data)    
-    system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
-    system.evaluate()
+    # system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
+    # system.evaluate()
 
 if __name__ == '__main__':
     main()

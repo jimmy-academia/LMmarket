@@ -6,10 +6,7 @@ from networks.aspect import infer_aspects_weights
 
 class DevMethod(BaseSystem):
     def __init__(self, args, data):
-            super().__init__(args, data)
-
-    def recommend(self, query):
-
+        super().__init__(args, data)
         experiment plan = """EXPERIMENTS for RETRIEVAL
         1. check how it is segmented: determine whether a segment really only has 1 aspect. does it need nearby segments for context?
         2. how to retrieve? compare using as query: aspect (keyword); aspect description; aspect definition; "find"-sentences; synonym expansion sentences
@@ -18,5 +15,8 @@ class DevMethod(BaseSystem):
         """
         print(experiment plan)
     
+    def recommend(self, query):
+        pass
+
     def rr(self, *args, **kwargs):
         self.retrieve_similar_segments(*args, **kwargs)
