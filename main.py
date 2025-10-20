@@ -69,6 +69,15 @@ def main():
     args = _resolve_args(args)
     args.prepared_data_path = args.clean_dir/f'{args.dset}_data.json'
     data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
+
+    experiment_plan = """EXPERIMENTS for RETRIEVAL
+    1. check how it is segmented: determine whether a segment really only has 1 aspect. does it need nearby segments for context?
+    2. how to retrieve? compare using as query: aspect (keyword); aspect description; aspect definition; "find"-sentences; synonym expansion sentences
+    3. what is retrieved? Checked if using similar keywords retrieve same results (when N is large). Check if non-overlaping results are important
+    4. Embedding vector: what happen when shift emerging vector? How close are similar queries?
+    """
+    print(experiment_plan)
+
     system = build_system(args, data)    
     # system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
     # system.evaluate()
