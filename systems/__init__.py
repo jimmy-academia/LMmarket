@@ -4,6 +4,7 @@ from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
 from .react import ReactRetrievalBaseline
 from .method import MainMethod
+from .lab import DevMethod
 
 def build_system(args, data):
     if args.system == 'base':
@@ -18,6 +19,9 @@ def build_system(args, data):
     if args.system == 'react':
         logging.info('[systems] >>> operating react retrieval baseline')
         return ReactRetrievalBaseline(args, data)
+    if args.system == 'dev':
+        logging.info('[systems] >>> operating dev method')
+        return DevMethod(args, data)
     if args.system == 'method':
         logging.info('[systems] >>> operating main method')
         return MainMethod(args, data)

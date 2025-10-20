@@ -59,9 +59,6 @@ class BaseSystem:
             xb = np.ascontiguousarray(self.embedding.astype(np.float32, copy=False))
             xb_sq = (xb**2).sum(axis=1).astype(np.float32) 
         self.faiss_search = partial(faiss_search, ctx=ctx, index=index, embedding=self.embedding, xb_sq=xb_sq)
-
-        check()
-
         
     def _encode_query(self, text, show=False, is_query=None):
         with torch.no_grad():
@@ -114,9 +111,6 @@ class BaseSystem:
             order = np.argsort(scores)[::-1][:topk]
             scores = scores[order]
         return scores, order
-
-    def rr(self, *args, **kwargs):
-        self.retrieve_similar_segments(*args, **kwargs)
 
     def retrieve_similar_segments(self, query, topk=None, faiss=True):
         query_vec = self._encode_query(query)
