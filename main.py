@@ -74,7 +74,7 @@ def main():
     1. check how it is segmented: determine whether a segment really only has 1 aspect. does it need nearby segments for context?
     2. how to retrieve? compare using as query: aspect (keyword); aspect description; aspect definition; "find"-sentences; synonym expansion sentences
     3. what is retrieved? Checked if using similar keywords retrieve same results (when N is large). Check if non-overlaping results are important
-    4. Embedding vector: what happen when shift emerging vector? How close are similar queries?
+    ///4. Embedding vector: what happen when shift emerging vector? How close are similar queries?///
     """
     print(experiment_plan)
 

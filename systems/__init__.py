@@ -2,7 +2,6 @@ import logging
 from .base import BaseSystem
 from .sparse import BM25Baseline
 from .dense import DenseRetrieverBaseline
-from .react import ReactRetrievalBaseline
 from .method import MainMethod
 from .lab import DevMethod
 

@@ -6,7 +6,6 @@ from utils import load_or_build, dumpp, loadp, dumpj, loadj
 from networks.segmenter import segment_reviews
 from networks.encoder import get_text_encoder
 from networks.faiss import faiss_dump, faiss_load, build_faiss, faiss_search
-from networks.aspect import aspect_splitter
 
 from functools import partial
 from tqdm import tqdm
@@ -37,9 +36,14 @@ class BaseSystem:
         segment_path = args.clean_dir / f"segments_{args.dset}.pkl"
         segment_payload = load_or_build(segment_path, dumpp, loadp, segment_reviews, self.reviews, self.segment_batch_size)
         self.segments = segment_payload["segments"]
-        self.segment_lookup = segment_payload["segment_lookup"]
+        
+        #seg_id => segment
+        self.segment_lookup = segment_payload["segment_lookup"] 
+        # review_id => segments of review
         self.review_segments = segment_payload["review_segments"] 
+        # item_id => segment_ids
         self.item_segments = segment_payload["item_segments"] 
+        # item_id => review_ids
         self.item_reviews = segment_payload["item_reviews"] 
 
         # % --- embedding ---
@@ -126,12 +130,8 @@ class BaseSystem:
 
     # ==== test =====
 
-    def recommend(self, query):
-        logging.info(query)
-        test_aspect_path = 'data/test_aspect.json'
-        aspect_list = load_or_build(test_aspect_path, dumpj, loadj, aspect_splitter, query)
-        logging.info(aspect_list)
-
+    # def recommend(self, query):
+        
     def evaluate(self):
         logging.info(f'[Base] evaluating {self.args.system}')
         for item_id in self.top_items:

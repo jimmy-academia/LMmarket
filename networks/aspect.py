@@ -1,3 +1,4 @@
+import json
 from api import query_llm, user_struct, system_struct, assistant_struct
 
 def infer_aspects_weights(query):
