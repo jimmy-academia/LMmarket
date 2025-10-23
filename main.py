@@ -3,7 +3,7 @@ import torch
 import argparse
 from pathlib import Path
 
-from data import prepare_data
+from data import prepare_data, pick_city_data
 from systems import build_system
 from utils import load_or_build, readf, dumpj, loadj, _ensure_dir, set_seeds, set_logging, _ensure_pathref
 
@@ -15,7 +15,7 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='dev')
+    parser.add_argument('--system', type=str, default='method')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
     parser.add_argument('--clean_dir', type=str, default='cache/clean') # cleaned data
@@ -23,6 +23,7 @@ def get_arguments():
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
     parser.add_argument('--enc', type=str, default="f2llm")
     parser.add_argument('--normalize', type=str, default="true")
+    parser.add_argument('--city', type=str, default=None)
 
     parser.add_argument('--top_k', type=int, default=5)
     return parser.parse_args()
@@ -70,6 +71,12 @@ def main():
     args.prepared_data_path = args.clean_dir/f'{args.dset}_data.json'
     data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
 
+    if args.city is not None:
+        data = pick_city_data(data, args.city)
+        logging.info(f"[main.py] downsizing to city: {args.city}")
+        _num = lambda x: len(data[x].keys())
+        logging.info("[main.py] # users {} # items {} # reviews {}".format(*map(_num, ['users', 'items', 'reviews'])))
+
     experiment_plan = """EXPERIMENTS for RETRIEVAL
     1. check how it is segmented: determine whether a segment really only has 1 aspect. does it need nearby segments for context?
     2. how to retrieve? compare using as query: aspect (keyword); aspect description; aspect definition; "find"-sentences; synonym expansion sentences
@@ -79,7 +86,7 @@ def main():
     print(experiment_plan)
 
     system = build_system(args, data)    
-    # system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
+    system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
     # system.evaluate()
 
 if __name__ == '__main__':

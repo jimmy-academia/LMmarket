@@ -1,5 +1,5 @@
 import logging
-from .yelp import prepare_yelp_data
+from .yelp import prepare_yelp_data, pick_city_data
 
 def prepare_data(args):
     if args.dset == 'yelp':

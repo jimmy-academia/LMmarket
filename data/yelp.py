@@ -2,7 +2,6 @@
 import json
 from utils import _iter_line
 from .hub import DataHub
-from .geo import *
 
 def prepare_yelp_data(dset_root):
     return YelpData(dset_root).build()
@@ -91,5 +90,22 @@ class YelpData(DataHub):
 
         # self.reviews["item2reviews"] = ...
         # self.reviews["user2reviews"] = ...
+
+def pick_city_data(data, city):
+    users = data['users']
+    items = data['items']
+    reviews = data['reviews']
+
+    items = {k:v for k, v in items.items() if v['city'].lower() == city}
+    reviews = {k:v for k, v in reviews.items() if v['item_id'] in items}
+    users = {k:v for k, v in users.items() if v['raw_info']['user_id'] in users}
+    return {"users": users, "items": items, "reviews": reviews}
+
+
+
+
+
+
+
 
 
