@@ -77,6 +77,9 @@ def main():
         _num = lambda x: len(data[x].keys())
         logging.info("[main.py] # users {} # items {} # reviews {}".format(*map(_num, ['users', 'items', 'reviews'])))
 
+    dict2list = lambda _dict: list(_dict.values())
+    data = {k: dict2list(v) for k, v in data.items()}
+
     experiment_plan = """EXPERIMENTS for RETRIEVAL
     1. check how it is segmented: determine whether a segment really only has 1 aspect. does it need nearby segments for context?
     2. how to retrieve? compare using as query: aspect (keyword); aspect description; aspect definition; "find"-sentences; synonym expansion sentences

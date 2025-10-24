@@ -14,4 +14,3 @@ class MainMethod(BaseSystem):
 
        
         logging.info('we are doing cafe')
-        check()

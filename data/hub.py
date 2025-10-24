@@ -7,7 +7,7 @@ import logging
 class DataHub:
     def __init__(self, dset_root):
         self.dset_root = Path(dset_root)
-        self.max_clean_passes = 3
+        self.max_clean_passes = 2
         self.min_review_chars = 200
         self.min_reviews_per_user = 50
         self.min_reviews_per_item = 50
@@ -59,13 +59,9 @@ class DataHub:
         self.reviews = {rid: r for rid, r in self.reviews.items() if r.get("user_id") in self.users and r.get("item_id") in self.items}
         return prev_length != len(self.reviews)
 
-    def postprocess(self):
-        """Dataset-specific final step (override if needed)."""
-        return
-
     def build(self):
         self.load_data()
         self.clean_data()
-        self.postprocess()
         self.data = {"users": self.users, "items": self.items, "reviews": self.reviews}
         return self.data
+        
