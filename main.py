@@ -24,8 +24,10 @@ def get_arguments():
     parser.add_argument('--enc', type=str, default="f2llm")
     parser.add_argument('--normalize', type=str, default="true")
     parser.add_argument('--city', type=str, default=None)
-
     parser.add_argument('--top_k', type=int, default=5)
+    # summarizer
+    parser.add_argument('--summarizer_name', type=str, default='qwen')
+
     return parser.parse_args()
 
 
@@ -89,7 +91,8 @@ def main():
     print(experiment_plan)
 
     system = build_system(args, data)    
-    system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
+
+    # system.recommend("Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.")
     # system.evaluate()
 
 if __name__ == '__main__':
