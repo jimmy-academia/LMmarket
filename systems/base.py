@@ -5,7 +5,7 @@ from collections import defaultdict
 from rank_bm25 import BM25Okapi
 
 from .searchable import Searchable
-# from .dense_searchable import DenseSearchable, DenseEncoder
+from networks.slm import SmallLM
 
 class ItemSearchable:
     def __init__(self, items, review_searchable):
@@ -13,7 +13,8 @@ class ItemSearchable:
         self.item_star_name = {item['raw_info']['business_id']: [item['raw_info']['stars'], item['raw_info']['name']] for item in items}
         self.reviews = review_searchable
 
-    def search(self, query, topk=5, topm=10, review_k=None, agg="sum", silent=False): # 'sum' | 'mean' | 'max' over topm review scores
+    def search(self, query, topk=5, topm=10, review_k=None, agg="sum", silent=False): 
+        # agg = 'sum' | 'mean' | 'max' over topm review scores
         
         if review_k is None:
             review_k = topk*20
@@ -69,10 +70,9 @@ class BaseSystem:
         self.args = args
         
         self.reviews = Searchable(data['reviews'])
-        # self.encoder = DenseEncoder(device=args.device)
-        # self.reviews = DenseSearchable(data['reviews'], args.cache_dir, self.encoder)
         self.items = ItemSearchable(data['items'], self.reviews)
         
+        # self.model = SmallLM(args.model_name, args.device)
 
         
 

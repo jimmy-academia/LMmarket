@@ -147,12 +147,12 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def run_llm_batch(prompts, task_name, model="gpt-4.1-mini", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name, model="gpt-5-nano", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
     """
-    print(f'[run_llm_batch] global task name: {task_name}')
+    print(f'[batch_run_llm] global task name: {task_name}')
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
 
@@ -256,7 +256,7 @@ def safe_json_parse(output_str):
         return {}
 
 
-def run_llm_batch_api(prompts, model="gpt-4.1-mini", temperature=0.1, verbose=False, poll_interval=5):
+def run_llm_batch_api(prompts, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5):
     """
     OpenAI Batch API: memory-only (no temp files). Returns list[str] in input order.
     Prints token totals and estimated cost when verbose=True.
