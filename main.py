@@ -88,7 +88,7 @@ def main():
     3. what is retrieved? Checked if using similar keywords retrieve same results (when N is large). Check if non-overlaping results are important
     ///4. Embedding vector: what happen when shift emerging vector? How close are similar queries?///
     """
-    print(experiment_plan)
+    # print(experiment_plan)
 
     system = build_system(args, data)    
 
