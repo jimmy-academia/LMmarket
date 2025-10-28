@@ -256,31 +256,59 @@ def safe_json_parse(output_str):
         return {}
 
 
-def run_llm_batch_api(prompts, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5):
+def run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5, json_list=None):
     """
-    OpenAI Batch API: memory-only (no temp files). Returns list[str] in input order.
-    Prints token totals and estimated cost when verbose=True.
+    OpenAI Batch API (memory-only JSONL). Returns list[str] in input order.
+
+    `messages_list` may be:
+      - List[str]  (each string -> [user_struct(string)])
+      - List[List[{'role': ..., 'content': ...}]]  (prebuilt message arrays)
     """
     client = get_openai_client()
 
+    def _to_text(obj):
+        # Normalize various SDK return types to a UTF-8 string
+        if hasattr(obj, "read") and callable(obj.read):
+            return obj.read().decode("utf-8", errors="replace")
+        if hasattr(obj, "text") and isinstance(obj.text, str):
+            return obj.text
+        if isinstance(obj, (bytes, bytearray)):
+            return obj.decode("utf-8", errors="replace")
+        return str(obj)
+
     # Build JSONL (in-memory)
-    lines = []
     m_is_gpt5 = model.lower().startswith("gpt-5")
-    for i, p in enumerate(prompts):
-        body = {"model": model, "messages": [user_struct(p)]}
+    lines = []
+    for i, m in enumerate(messages_list):
+        body = {"model": model, "messages": prep_msg(m)}
         if not m_is_gpt5:
             body["temperature"] = temperature
-        lines.append(json.dumps({
-            "custom_id": f"prompt-{i}",
-            "method": "POST",
-            "url": "/v1/chat/completions",
-            "body": body,
-        }, ensure_ascii=False))
+
+        # Optional per-item JSON schema / use_json handling
+        json_opts = (json_list[i] if json_list else None) or {}
+        if json_opts.get("use_json"):
+            if json_opts.get("json_schema"):
+                body["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": json_opts["json_schema"],
+                }
+            else:
+                body["response_format"] = {"type": "json_object"}
+
+        lines.append(json.dumps(
+            {
+                "custom_id": f"prompt-{i}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": body,
+            },
+            ensure_ascii=False,
+        ))
     payload = ("\n".join(lines) + "\n").encode("utf-8")
 
     # Upload input JSONL from memory
     buf = io.BytesIO(payload)
-    buf.name = "batch.jsonl"  # some SDKs use this for filename
+    buf.name = "batch.jsonl"
     uploaded = client.files.create(file=buf, purpose="batch")
 
     # Create batch
@@ -290,42 +318,32 @@ def run_llm_batch_api(prompts, model="gpt-5-nano", temperature=0.1, verbose=Fals
         completion_window="24h",
     )
     if verbose:
-        print(f"[LLM batch] id={batch.id} status={getattr(batch,'status',None)}")
+        print(f"[LLM batch] id={batch.id} status={getattr(batch, 'status', None)}")
 
     # Poll
-    status = getattr(batch, "status", None)
-    while status in {"validating", "queued", "in_progress", "finalizing"}:
+    pending_statuses = {"validating", "queued", "in_progress", "finalizing"}
+    while getattr(batch, "status", None) in pending_statuses:
         time.sleep(max(1, poll_interval))
         batch = client.batches.retrieve(batch.id)
-        status = getattr(batch, "status", None)
         if verbose:
-            print(f"[LLM batch] status={status}")
+            print(f"[LLM batch] status={getattr(batch, 'status', None)}")
 
-    if status != "completed":
-        logging.error(f"[LLM batch] ended with status={status}")
-        return ["{}" for _ in prompts]
+    if getattr(batch, "status", None) != "completed":
+        logging.error(f"[LLM batch] ended with status={getattr(batch, 'status', None)}")
+        return ["" for _ in messages_list]
 
-    # Fetch output (fall back to error file if present)
+    # Fetch output (prefer output_file_id; fall back to error_file_id)
     fid = getattr(batch, "output_file_id", None) or getattr(batch, "error_file_id", None)
     if not fid:
         logging.error("[LLM batch] no output_file_id/error_file_id")
-        return ["{}" for _ in prompts]
+        return ["" for _ in messages_list]
 
-    content = client.files.content(fid)
-    if hasattr(content, "text") and isinstance(content.text, str):
-        raw = content.text
-    elif hasattr(content, "read"):
-        data = content.read()
-        raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else str(data)
-    elif isinstance(content, (bytes, bytearray)):
-        raw = content.decode("utf-8")
-    else:
-        raw = str(content)
+    raw = _to_text(client.files.content(fid))
 
     # Parse responses
     outputs, total_pt, total_ct = {}, 0, 0
     for line in raw.splitlines():
-        if not line.strip(): 
+        if not line.strip():
             continue
         try:
             entry = json.loads(line)
@@ -334,15 +352,15 @@ def run_llm_batch_api(prompts, model="gpt-5-nano", temperature=0.1, verbose=Fals
             continue
 
         cid = entry.get("custom_id")
-        resp = (entry.get("response") or {})
+        resp = entry.get("response") or {}
         if resp.get("status_code") != 200:
             logging.error(f"[LLM batch] item {cid} status={resp.get('status_code')}")
-            outputs[cid] = "{}"
+            outputs[cid] = ""
             continue
 
         body = resp.get("body") or {}
-        ch = (body.get("choices") or [])
-        outputs[cid] = ch[0].get("message", {}).get("content", "") if ch else ""
+        choices = (body.get("choices") or [])
+        outputs[cid] = choices[0].get("message", {}).get("content", "") if choices else ""
 
         usage = body.get("usage") or {}
         total_pt += int(usage.get("prompt_tokens") or 0)
@@ -353,4 +371,4 @@ def run_llm_batch_api(prompts, model="gpt-5-nano", temperature=0.1, verbose=Fals
         print(f"[LLM batch] prompt_tokens={total_pt} completion_tokens={total_ct} est_cost=${cost:.6f}")
 
     # Align to input order
-    return [outputs.get(f"prompt-{i}", "") for i in range(len(prompts))]
+    return [outputs.get(f"prompt-{i}") for i in range(len(messages_list))]

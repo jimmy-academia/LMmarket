@@ -10,8 +10,17 @@ class Searchable:
         self._tokens = [self._tok(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._tokens) if self._tokens else None
 
+        self.length = len(self.texts)
+    
     def __len__(self):
-        return len(self.texts)
+        return self.length
+
+    def __getitem__(self, index):
+        return self.reviews[index]
+
+    def __iter__(self):
+        return iter(self.reviews)
+
 
     def _tok(self, t):
         return re.findall(r"\w+", (t or "").lower())
@@ -32,7 +41,10 @@ class Searchable:
         if end < len(text): snippet = snippet + "…"
         return snippet, hit
 
-    def search(self, query, topk=5, silent=False):
+    def search(self, query, topk=None, silent=False):
+        if topk is None:
+            topk = self.length
+
         q = self._tok(query)
         scores = self._bm25.get_scores(q)
         idx = np.argsort(scores)[::-1][:topk]
@@ -51,7 +63,7 @@ class Searchable:
                 if not silent: print(f"{prefix} | {snippet}")
                 if not silent: print(f"→ keyword: {hit}\n")
                 
-                out.append({"review": review, "score": float(scores[i]),
-                 "hit": hit, "rating": rating_val, "snippet": snippet})
+                out.append({"item_id": review['item_id'] "review": review, "score": float(scores[i]),
+                 "hit": hit, "rating": rating_val, "snippet": snippet, "text": review['text']})
                 
         return out

@@ -11,7 +11,19 @@ class ItemSearchable:
     def __init__(self, items, review_searchable):
         self.name = 'items'
         self.item_star_name = {item['raw_info']['business_id']: [item['raw_info']['stars'], item['raw_info']['name']] for item in items}
+        self.items = items
+        self.item_id_set = {item['raw_info']['business_id'] for item in items}
         self.reviews = review_searchable
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, index):
+        return self.items[index]
+
+    def __iter__(self):
+        return iter(self.items)
+
 
     def search(self, query, topk=5, topm=10, review_k=None, agg="sum", silent=False): 
         # agg = 'sum' | 'mean' | 'max' over topm review scores

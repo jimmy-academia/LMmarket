@@ -29,14 +29,14 @@ class YelpData(DataHub):
             if not categories or "restaurant" not in categories.lower():
                 continue
             item_id = biz["business_id"]
-            self.items[item_id] = {"raw_info": biz}
+            self.items[item_id] = {"raw_info": biz, 'item_id': item_id}
 
     def _load_users(self):
         self.users = {}
         for line in _iter_line(self.user_file, total = 1_987_897, desc="user_file"):
             user = json.loads(line)
             user_id = user['user_id']
-            self.users[user_id] = {"raw_info": user}
+            self.users[user_id] = {"raw_info": user, 'user_id': user_id}
 
     def _load_reviews_and_tips(self):
         self.reviews = {}
@@ -100,12 +100,4 @@ def pick_city_data(data, city):
     reviews = {k:v for k, v in reviews.items() if v['item_id'] in items}
     users = {k:v for k, v in users.items() if v['raw_info']['user_id'] in users}
     return {"users": users, "items": items, "reviews": reviews}
-
-
-
-
-
-
-
-
 
