@@ -1,7 +1,8 @@
 # network.helper
+import json
 import logging
 from api import batch_run_llm, query_llm
-from api import user_struct, system_struct, assistant_struct
+from api import user_struct, system_struct, assistant_struct, developer_struct
 
 def _decompose_aspect(query):
     messages = [
@@ -42,6 +43,7 @@ SYSTEM_MESSAGE = (
     "   - Keywords must be lowercase, natural-language words or short phrases.\n"
     "   - Focus only on synonyms or strongly related expressions of the aspect.\n"
     "   - Do NOT include the aspect itself or irrelevant query context.\n"
+    "   - Do NOT use overly generic terms; consider whether the keyword can be used in sparse retrieval to obtain the desired aspect.\n"
     "   - Output ONLY valid JSON matching the schema."
 )
 
@@ -83,9 +85,86 @@ def _generate_aspect_info(aspect_list, query):
         try:
             result = json.loads(raw)
         except Exception:
-            result = {"aspect_type": "functional", "starter_keywords": []}
+            logging.error('[_generate_aspect_info] json load failed')
+
         result["aspect"] = aspect
         result["starter_keywords"].insert(0, aspect)
         aspect_info_list.append(result)
 
     return aspect_info_list
+
+def _llm_judge_item(aspect, aspect_type, query, review_text, snippet):
+    """
+    Evaluate a single review for one aspect.
+
+    Returns dict:
+      {
+        "aspect_status": str,
+        "is_conclusive": bool,
+        "is_positive": bool,
+        "confidence": float,
+        "new_keywords": str
+      }
+    """
+    rubric = {
+        "ontological": "Judge whether the review confirms or denies that the item IS of this category.",
+        "functional": "Judge whether the review confirms the item HAS or DOES this feature well.",
+        "teleological": "Judge whether the item IS SUITABLE or UNSUITABLE for this purpose."
+    }[aspect_type]
+
+    system_prompt = (
+        "You are a precise review judge.\n"
+        f"This is a {aspect_type.upper()} aspect. {rubric}\n"
+        "Decide one of: positive, negative, inconclusive.\n"
+        "Provide confidence score and briefly explain your reasoning in plain text (1–2 sentences).\n"
+        "Return JSON: {aspect_status, is_conclusive, is_positive, confidence, reasoning}."
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        # {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nSNIPPET:\n{snippet}"}
+        {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nREVIEW:\n{review_text}"}
+    ]
+
+    LLM_JUDGE_SCHEMA = {
+    "name": "llm_judge_schema",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "aspect_status": {
+                "type": "string",
+                "enum": ["positive", "negative", "inconclusive"],
+                "description": "Overall judgment for the given aspect."
+            },
+            "is_conclusive": {
+                "type": "boolean",
+                "description": "True if the review gives clear evidence for or against the aspect."
+            },
+            "is_positive": {
+                "type": "boolean",
+                "description": "True if the aspect_status is positive; false otherwise."
+            },
+            "confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": "Confidence level of the judgment, from 0.0 to 1.0."
+            },
+            "reasoning": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "Short natural-language reasoning (≤300 chars) explaining why the decision was made."
+            }
+        },
+        "required": ["aspect_status", "is_conclusive", "is_positive", "confidence", "reasoning"],
+        "additionalProperties": False
+        }
+    }
+
+    try:
+        raw = query_llm(messages, use_json=True, json_schema=LLM_JUDGE_SCHEMA)
+        result = json.loads(raw)
+    except Exception as e:
+        logging.warning(f"[LLM judge] parse failure: {e}")
+
+    return result
+    

@@ -62,6 +62,7 @@ class DataHub:
     def build(self):
         self.load_data()
         self.clean_data()
+        self.postprocess()
         self.data = {"users": self.users, "items": self.items, "reviews": self.reviews}
         return self.data
         

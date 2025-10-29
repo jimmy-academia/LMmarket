@@ -54,7 +54,7 @@ class YelpData(DataHub):
                 review_id = obj["review_id"] if kind == 'review' else f"tip_{tip_id}" 
                 tip_id += int(kind == 'tip')
                 
-                self.reviews[review_id] = {"item_id": item_id, "user_id": user_id, "raw_info": obj, "text": text}
+                self.reviews[review_id] = {"review_id":review_id, "item_id": item_id, "user_id": user_id, "raw_info": obj, "text": text}
 
     def postprocess(self, shrink_raw=True):
         

@@ -16,7 +16,9 @@ from pathlib import Path
 
 user_struct = lambda x: {"role": "user", "content": x}
 system_struct = lambda x: {"role": "system", "content": x}
+developer_struct = lambda x: {"role": "developer", "content": x}
 assistant_struct = lambda x: {"role": "assistant", "content": x}
+# from api import user_struct, system_struct, assistant_struct, developer_struct
 
 # ---- clients ----
 openai_client = None
