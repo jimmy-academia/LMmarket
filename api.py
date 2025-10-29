@@ -10,11 +10,13 @@ from openai import AsyncOpenAI
 from utils import readf, dumpj 
 from tqdm.asyncio import tqdm as tqdm_asyncio
 
+import operator
+
 from pathlib import Path
 
-user_struct = lambda x: {"role": "user", "content": x}
-system_struct = lambda x: {"role": "system", "content": x}
-assistant_struct = lambda x: {"role": "assistant", "content": x}
+user_struct = lambda x: {"role": "user", "content": [{"type":"text", "text":x}]}
+system_struct = lambda x: {"role": "system", "content": [{"type":"text", "text":x}]}
+assistant_struct = lambda x: {"role": "assistant", "content": [{"type":"text", "text":x}]}
 
 # ---- clients ----
 openai_client = None
@@ -76,17 +78,20 @@ def _extract_usage(resp):
     return int(pt), int(ct)
 
 def prep_msg(prompt):
+    print(prompt)
     if type(prompt) == str:
         messages = [user_struct(prompt)]
+        print('is str is formated')
+        return messages
     elif (
         isinstance(prompt, list)
         and prompt
         and all(isinstance(x, dict) and {"role", "content"} <= x.keys() for x in prompt)
-    ):
+    ):  
+        print('not str not formated')
         return prompt
     else:
         raise ValueError("prompt must be a string or a list of {'role', 'content'} dicts")
-    return messages
     
 # ---- query (sync) ----
 def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
@@ -147,26 +152,35 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def batch_run_llm(prompts, task_name, model="gpt-5-nano", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name=None, model="gpt-5-nano", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
     """
-    print(f'[batch_run_llm] global task name: {task_name}')
+    if task_name is not None: logging.info(f'[batch_run_llm] global task name: {task_name}')
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
 
-        async def one(idx, p, with_usage):
+        def _listify(x):
+            if isinstance(x, list):
+                return x
+            return [x]*len(prompts)
+
+        schema_list = _listify(json_schema)
+        use_json_list = list(map(operator.or_,  _listify(use_json), map(bool, schema_list)))
+
+        async def one(idx, p, schema, use_j, with_usage):
             try:
+                messages = prep_msg(p)
                 result = await query_llm_async(
-                    p,
+                    messages,
                     model=model,
                     temperature=temperature,
                     sem=sem,
                     verbose=False,
                     return_usage=with_usage,
-                    json_schema=json_schema,
-                    use_json=use_json,
+                    json_schema=schema,
+                    use_json=use_j,
                 )
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")
@@ -178,7 +192,7 @@ def batch_run_llm(prompts, task_name, model="gpt-5-nano", temperature=0.1, num_w
             return idx, result
 
         if verbose:
-            tasks = [one(i, p, True) for i, p in enumerate(prompts)]
+            tasks = [one(i, p, schema_list[i], use_json_list[i], True) for i, p in enumerate(prompts)]
             outs = [None] * len(prompts)
             total_pt = 0
             total_ct = 0
@@ -194,7 +208,7 @@ def batch_run_llm(prompts, task_name, model="gpt-5-nano", temperature=0.1, num_w
             )
             return outs
         
-        tasks = [one(i, p, False) for i, p in enumerate(prompts)]
+        tasks = [one(i, p, schema_list[i], use_json_list[i], False) for i, p in enumerate(prompts)]
         results = await asyncio.gather(*tasks)
         results.sort(key=lambda item: item[0])
         return [content for _, content in results]
@@ -256,7 +270,7 @@ def safe_json_parse(output_str):
         return {}
 
 
-def run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5, json_list=None):
+def dep_run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5, json_list=None):
     """
     OpenAI Batch API (memory-only JSONL). Returns list[str] in input order.
 

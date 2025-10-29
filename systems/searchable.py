@@ -63,7 +63,7 @@ class Searchable:
                 if not silent: print(f"{prefix} | {snippet}")
                 if not silent: print(f"→ keyword: {hit}\n")
                 
-                out.append({"item_id": review['item_id'] "review": review, "score": float(scores[i]),
+                out.append({"item_id": review['item_id'], "review": review, "score": float(scores[i]),
                  "hit": hit, "rating": rating_val, "snippet": snippet, "text": review['text']})
                 
         return out

@@ -52,10 +52,11 @@ def loadp(filepath):
 
 def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
     path = Path(path)
-    exists = path.exists() if hasattr(path, "exists") else Path(path).exists()
-    if exists:
+    if path.exists():
         logging.info(f"[load_or_build] >>> {path} exists, loading...")
         return load_fn(path)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
 
     logging.info(f"[load_or_build] >>> {path} does not exist, building...")
     result = build_fn(*args, **kwargs)

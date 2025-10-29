@@ -4,8 +4,15 @@ import logging
 from utils import load_or_build, dumpj, loadj
 from .base import BaseSystem
 
-from network.helper import _decompose_aspect, _generate_aspect_info
+from networks.helper import _decompose_aspect, _generate_aspect_info
 from debug import check
+
+# self.item_aspect_status = {}
+#         for item in self.items:
+#             item_id = item['item_id']
+#             self.item_aspect_status[item_id] = {aspect:{} for aspect in aspect_list}
+#         self.review_aspect_labels = {}
+
 
 class MainMethod(BaseSystem):
     def __init__(self, args, data):
@@ -13,17 +20,13 @@ class MainMethod(BaseSystem):
 
     def recommend(self, query):
 
-        aspect_list = _decompose_aspect(query)        
+        aspect_list = load_or_build('cache/tmp/aspect_list.json', dumpj, loadj, _decompose_aspect, query)
+        print(aspect_list)
         aspect_list = aspect_list.split(',')
-
-        self.item_aspect_status = {}
-        for item in self.items:
-            item_id = item['item_id']
-            self.item_aspect_status[item_id] = {aspect:{} for aspect in aspect_list}
-        self.review_aspect_labels = {}
-
-        aspect_info_list = _generate_aspect_info(aspect_list, query)
-
+        aspect_info_list = load_or_build('cache/tmp/aspect_info_list.json', dumpj, loadj, _generate_aspect_info, aspect_list, query)
+        print(aspect_info_list)
+        check()
+        
         itemsets = {}
         for aspect_info in aspect_info_list:
             itemsets[aspect_info["aspect"]] = self.handle_one_aspect(aspect_info, query)
@@ -56,14 +59,15 @@ class MainMethod(BaseSystem):
             "aspect_type": aspect_info['aspect_type'], # ontological, functional, teleological
             "mode": 1, 
             "round": 0,
-            "keywords_que": aspect_info['starter_keywords']
-            "keyword_stats": {}
+            "keywords_que": aspect_info['starter_keywords'],
+            "keyword_stats": {},
             "items_total": len(self.items),
             "items_covered": 0,
         }
 
         # --- phase 1 --- obtain by search ---
-        
+        print('phase 1 start')
+
         seen_items = set()
         positive_items = set()
         all_items = self.items.item_id_set
@@ -77,6 +81,10 @@ class MainMethod(BaseSystem):
         ):
             search_state["round"] += 1
             last_count = len(seen_items)
+
+            print("round", search_state["round"])
+            print(search_state)
+            input()
 
             all_retrieved = {}
             for kw in search_state["keywords_que"]:

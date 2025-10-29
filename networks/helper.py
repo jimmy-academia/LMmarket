@@ -1,6 +1,6 @@
 # network.helper
 import logging
-from api import run_llm_batch_api, query_llm, 
+from api import batch_run_llm, query_llm
 from api import user_struct, system_struct, assistant_struct
 
 def _decompose_aspect(query):
@@ -69,10 +69,12 @@ def _generate_aspect_info(aspect_list, query):
             user_struct(query),                  # context first
             user_struct(f"ASPECT:\n{aspect}")    # explicit aspect second
         ])
+        break
 
-    json_batch = [{"use_json": True, "json_schema": OUTPUT_SCHEMA}] * len(aspect_list)
-    raw_results = run_llm_batch_api(messages_batch, json_list=json_batch)
-
+    raw_results = batch_run_llm(messages_batch, use_json=True, json_schema=OUTPUT_SCHEMA)
+    from debug import check
+    check()
+    
     aspect_info_list = []
     for aspect, raw in zip(aspect_list, raw_results):
         try:
