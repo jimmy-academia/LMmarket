@@ -56,14 +56,14 @@ class MainMethod(BaseSystem):
         """
         aspect = aspect_info['aspect']
         aspect_type = aspect_info['aspect_type']
+        logging.info(f'Handling aspect: {aspect} type: {aspect_type}')
+        
         MAX_ROUNDS = 1
         GROWTH_PATIENCE = 2    # consecutive low-growth rounds allowed
         GROWTH_MIN = 0.02      # <2% new items => stagnation
         REMAINING_MIN = 0.1    # <10% items left => move to mode 2
 
         # --- phase 1 --- obtain by search ---
-        print('phase 1 start')
-
         seen_items = set()
         positive_items = set()
         all_items = self.items.item_id_set
@@ -90,7 +90,7 @@ class MainMethod(BaseSystem):
 
             while to_review:
                 logging.info('='*20)
-                logging.info(len(to_review), len(self.reviews), len(seen_items), len(all_items))
+                logging.info(f"{len(to_review)}, {len(self.reviews)}, {len(seen_items)}, {len(all_items)}")
                 logging.info('='*20)
                 obj = to_review.pop()
                 review_id, item_id, text, snippet = obj
@@ -99,7 +99,7 @@ class MainMethod(BaseSystem):
                 judgment = _llm_judge_item(aspect, aspect_type, query, text, snippet)
                 logging.info(text)
                 logging.info(snippet)
-                logging.info(judgment)
+                logging.info(json.dumps(judgment))
 
                 # Step 2. Remove redundant reviews if conclusive
                 if judgment["is_conclusive"]:
