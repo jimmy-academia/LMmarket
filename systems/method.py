@@ -25,11 +25,11 @@ class MainMethod(BaseSystem):
         aspect_list = aspect_list.split(',')
         aspect_info_list = load_or_build('cache/tmp/aspect_info_list.json', dumpj, loadj, _generate_aspect_info, aspect_list, query)
         print(aspect_info_list)
-        check()
-        
+
         itemsets = {}
         for aspect_info in aspect_info_list:
             itemsets[aspect_info["aspect"]] = self.handle_one_aspect(aspect_info, query)
+            check()
 
         scoreset = {}
         candidateset = set.intersection(*itemsets.values())
@@ -84,7 +84,8 @@ class MainMethod(BaseSystem):
 
             print("round", search_state["round"])
             print(search_state)
-            input()
+
+            check()
 
             all_retrieved = {}
             for kw in search_state["keywords_que"]:
@@ -94,6 +95,8 @@ class MainMethod(BaseSystem):
 
             to_review = set.intersection(*all_retrieved.values())
 
+            check()
+            
             new_keywords = []
             while to_review:
                 obj = to_review.pop()

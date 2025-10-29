@@ -14,9 +14,9 @@ import operator
 
 from pathlib import Path
 
-user_struct = lambda x: {"role": "user", "content": [{"type":"text", "text":x}]}
-system_struct = lambda x: {"role": "system", "content": [{"type":"text", "text":x}]}
-assistant_struct = lambda x: {"role": "assistant", "content": [{"type":"text", "text":x}]}
+user_struct = lambda x: {"role": "user", "content": x}
+system_struct = lambda x: {"role": "system", "content": x}
+assistant_struct = lambda x: {"role": "assistant", "content": x}
 
 # ---- clients ----
 openai_client = None
@@ -78,27 +78,18 @@ def _extract_usage(resp):
     return int(pt), int(ct)
 
 def prep_msg(prompt):
-    print(prompt)
     if type(prompt) == str:
         messages = [user_struct(prompt)]
-        print('is str is formated')
         return messages
-    elif (
-        isinstance(prompt, list)
-        and prompt
-        and all(isinstance(x, dict) and {"role", "content"} <= x.keys() for x in prompt)
-    ):  
-        print('not str not formated')
-        return prompt
     else:
-        raise ValueError("prompt must be a string or a list of {'role', 'content'} dicts")
+        return prompt
     
 # ---- query (sync) ----
-def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
+def query_llm(messages, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    messages = prep_msg(prompt)
+    messages = prep_msg(messages)
     kwargs = {"model": model, "messages": messages}
     if use_json:
         if json_schema:
@@ -119,7 +110,7 @@ def query_llm(prompt, model="gpt-5-nano", temperature=0.1, verbose=False, json_s
     return content
 
 # ---- query (async) ----
-async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False, json_schema=None, use_json=False):
+async def query_llm_async(messages, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False, json_schema=None, use_json=False):
     """
     If return_usage=True, returns (content, pt, ct); else returns content.
     """
@@ -131,7 +122,6 @@ async def query_llm_async(prompt, model="gpt-5-nano", temperature=0.1, sem=None,
         sem = asyncio.Semaphore(999999)
 
     async with sem:
-        messages = [user_struct(prompt)]
         kwargs = {"model": model, "messages": messages}
         if use_json:
             if json_schema:

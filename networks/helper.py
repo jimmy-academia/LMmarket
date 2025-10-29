@@ -27,38 +27,45 @@ def _decompose_aspect(query):
 
 
 SYSTEM_MESSAGE = (
-    "You classify ONE aspect and propose starter keywords for review retrieval.\n"
-    "Input arrives as TWO user messages:\n"
-    "  • First user message: the FULL ORIGINAL QUERY (context only)\n"
-    "  • Second user message: the ASPECT to classify\n\n"
-    "Use the full query ONLY to disambiguate domain or meaning if needed.\n"
-    "Otherwise, reason directly from the aspect.\n\n"
+    "You classify ONE aspect and propose synonym-based starter keywords for review retrieval.\n"
+    "You will receive two user messages:\n"
+    "  • First message: the full original query (context only)\n"
+    "  • Second message: the specific aspect to classify\n\n"
+    "Use the full query ONLY if it helps disambiguate the aspect meaning.\n"
+    "Otherwise, ignore it and reason directly from the aspect.\n\n"
     "Steps:\n"
-    "1) Assign `aspect_type` as one of: 'ontological', 'functional', 'teleological'.\n"
+    "1) Assign `aspect_type` as one of: 'ontological', 'functional', or 'teleological'.\n"
     "   - ontological → what the item IS (category/identity)\n"
     "   - functional → what the item HAS/DOES (features/properties/behaviors)\n"
     "   - teleological → what the item is FOR (purpose/suitability/intended use)\n"
-    "2) Suggest 3–6 concise starter keywords (lowercase, natural language).\n"
-    "   - Do NOT include the aspect itself (the system will add it later).\n"
-    "   - No explanations—return ONLY JSON.\n"
+    "2) Suggest 3–6 concise synonyms or near-synonyms that can serve as search keywords for the aspect ITSELF.\n"
+    "   - Keywords must be lowercase, natural-language words or short phrases.\n"
+    "   - Focus only on synonyms or strongly related expressions of the aspect.\n"
+    "   - Do NOT include the aspect itself or irrelevant query context.\n"
+    "   - Output ONLY valid JSON matching the schema."
 )
 
 OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "aspect_type": {
-            "type": "string",
-            "enum": ["ontological", "functional", "teleological"]
+    "name": "aspect_classification",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "aspect_type": {
+                "type": "string",
+                "enum": ["ontological", "functional", "teleological"],
+                "description": "The classification of the aspect type."
+            },
+            "starter_keywords": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "maxItems": 6,
+                "description": "3–6 concise lowercase keywords describing the aspect itself."
+            }
         },
-        "starter_keywords": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 3,
-            "maxItems": 6
-        }
-    },
-    "required": ["aspect_type", "starter_keywords"],
-    "additionalProperties": False
+        "required": ["aspect_type", "starter_keywords"],
+        "additionalProperties": False
+    }
 }
 
 def _generate_aspect_info(aspect_list, query):
@@ -66,15 +73,11 @@ def _generate_aspect_info(aspect_list, query):
     for aspect in aspect_list:
         messages_batch.append([
             system_struct(SYSTEM_MESSAGE),
-            user_struct(query),                  # context first
-            user_struct(f"ASPECT:\n{aspect}")    # explicit aspect second
+            user_struct(f"QUERY (context only): {query}"),
+            user_struct(f"ASPECT to classify:\n{aspect}")
         ])
-        break
 
     raw_results = batch_run_llm(messages_batch, use_json=True, json_schema=OUTPUT_SCHEMA)
-    from debug import check
-    check()
-    
     aspect_info_list = []
     for aspect, raw in zip(aspect_list, raw_results):
         try:
