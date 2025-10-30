@@ -93,39 +93,7 @@ def _generate_aspect_info(aspect_list, query):
 
     return aspect_info_list
 
-def _llm_judge_item(aspect, aspect_type, query, review_text, snippet):
-    """
-    Evaluate a single review for one aspect.
-
-    Returns dict:
-      {
-        "aspect_status": str,
-        "is_conclusive": bool,
-        "is_positive": bool,
-        "confidence": float,
-        "new_keywords": str
-      }
-    """
-    rubric = {
-        "ontological": "Judge whether the review confirms or denies that the item IS of this category.",
-        "functional": "Judge whether the review confirms the item HAS or DOES this feature well.",
-        "teleological": "Judge whether the item IS SUITABLE or UNSUITABLE for this purpose."
-    }[aspect_type]
-
-    system_prompt = (
-        "You are a precise review judge.\n"
-        f"This is a {aspect_type.upper()} aspect. {rubric}\n"
-        "Decide one of: positive, negative, inconclusive.\n"
-        "Provide confidence score and briefly explain your reasoning in plain text (1–2 sentences).\n"
-        "Return JSON: {aspect_status, is_conclusive, is_positive, confidence, reasoning}."
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        # {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nSNIPPET:\n{snippet}"}
-        {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nREVIEW:\n{review_text}"}
-    ]
-
-    LLM_JUDGE_SCHEMA = {
+LLM_JUDGE_SCHEMA = {
     "name": "llm_judge_schema",
     "schema": {
         "type": "object",
@@ -160,11 +128,46 @@ def _llm_judge_item(aspect, aspect_type, query, review_text, snippet):
         }
     }
 
-    try:
-        raw = query_llm(messages, use_json=True, json_schema=LLM_JUDGE_SCHEMA)
-        result = json.loads(raw)
-    except Exception as e:
-        logging.warning(f"[LLM judge] parse failure: {e}")
 
-    return result
-    
+def _llm_judge_item_prompt(aspect, aspect_type, query, review_text, snippet):
+    """
+    Evaluate a single review for one aspect.
+
+    Returns dict:
+      {
+        "aspect_status": str,
+        "is_conclusive": bool,
+        "is_positive": bool,
+        "confidence": float,
+        "new_keywords": str
+      }
+    """
+    rubric = {
+        "ontological": "Judge whether the review confirms or denies that the item IS of this category.",
+        "functional": "Judge whether the review confirms the item HAS or DOES this feature well.",
+        "teleological": "Judge whether the item IS SUITABLE or UNSUITABLE for this purpose."
+    }[aspect_type]
+
+    system_prompt = (
+        "You are a precise review judge.\n"
+        f"This is a {aspect_type.upper()} aspect. {rubric}\n"
+        "Decide one of: positive, negative, inconclusive.\n"
+        "Provide confidence score and briefly explain your reasoning in plain text (1–2 sentences).\n"
+        "Return JSON: {aspect_status, is_conclusive, is_positive, confidence, reasoning}."
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        # {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nSNIPPET:\n{snippet}"}
+        {"role": "user", "content": f"ASPECT: {aspect}\nQUERY: {query}\nREVIEW:\n{review_text}"}
+    ]
+    return messages
+
+def _llm_judge_batch(aspect, aspect_type, query, batch_obj):
+    messages_list = []
+    for obj in batch_obj:
+        review_id, item_id, text, snippet = obj
+        messages = _llm_judge_item_prompt(aspect, aspect_type, query, text, snippet)
+        messages_list.append(messages)
+    results = batch_run_llm(messages_list, json_schema=LLM_JUDGE_SCHEMA)
+    return results
+
