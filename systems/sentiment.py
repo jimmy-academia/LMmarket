@@ -1,12 +1,14 @@
-LLM_ASPECT_LABEL_PROMPT = """
-You are an expert rater for restaurant reviews. Your job: for each input segment,
-(1) decide if it is RELEVANT to the given ASPECT, and
-(2) score its SENTIMENT PERFORMANCE for that aspect.
+# self.item_aspect_status = {}
+#         for item in self.items:
+#             item_id = item['item_id']
+#             self.item_aspect_status[item_id] = {aspect:{} for aspect in aspect_list}
+#         self.review_aspect_labels = {}
 
-Rules
-    - Relevance is about whether the segment provides information that could help assess the aspect (explicitly or clearly implicitly).
+
+
+LLM_ASPECT_LABEL_PROMPT = """
+(2) score its SENTIMENT PERFORMANCE for that aspect.
     - Sentiment PERFORMANCE is how good/bad the aspect seems, not overall review mood.
-    - If the segment is NOT relevant, set sentiment to null.
     - Use only the segment text; do not invent facts.
     - Return STRICT JSON that matches the example structure. No extra text.
 

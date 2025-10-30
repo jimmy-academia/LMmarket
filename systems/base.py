@@ -144,3 +144,5 @@ class BaseSystem:
         self.reviews = Searchable(data['reviews'])
         self.items = ItemSearchable(data['items'], self.reviews)
 
+    def recommend(self, query):
+        raise NotImplementedError

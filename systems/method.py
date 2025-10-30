@@ -1,17 +1,12 @@
 import json
 import random
 import logging
-from utils import load_or_build, dumpj, loadj
-from .base import BaseSystem
 from pathlib import Path
-from networks.helper import _decompose_aspect, _generate_aspect_info, _llm_judge_batch
 
-# self.item_aspect_status = {}
-#         for item in self.items:
-#             item_id = item['item_id']
-#             self.item_aspect_status[item_id] = {aspect:{} for aspect in aspect_list}
-#         self.review_aspect_labels = {}
+from utils import load_or_build, dumpj, loadj
 
+from .base import BaseSystem
+from .helper import _decompose_aspect, _generate_aspect_info, _llm_judge_batch
 
 class MainMethod(BaseSystem):
     def __init__(self, args, data):
