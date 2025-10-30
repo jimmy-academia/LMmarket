@@ -6,33 +6,25 @@ from pathlib import Path
 from utils import load_or_build, dumpj, loadj
 
 from .base import BaseSystem
-from .helper import _decompose_aspect, _generate_aspect_info, _llm_judge_batch
+from .helper import _llm_judge_batch
 
 class MainMethod(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
 
-    def recommend(self, query):
+    def recommend_one_query(self, query, aspect_infos):
 
         self.query = query
-        aspect_list = load_or_build('cache/tmp/aspect_list.json', dumpj, loadj, _decompose_aspect, query)
-        aspect_list = [aspect_term.strip() for aspect_term in aspect_list.split(',')]
-        aspect_info_list = load_or_build('cache/tmp/aspect_info_list.json', dumpj, loadj, _generate_aspect_info, aspect_list, query)
-
-        itemsets_path = Path('cache/tmp/itemsets.json')
-        if itemsets_path.exists():
-            itemsets = loadj(itemsets_path)
-        else:
-            itemsets = {}
-            for aspect_info in aspect_info_list:
-                aspect = aspect_info["aspect"]
-                positives = self.handle_one_aspect(aspect_info)
-                itemsets[aspect] = positives
-                logging.info(f"{aspect}, # positives={len(positives)}")
-            dumpj(itemsets_path, itemsets)
+        
+        aspect_sets = {}
+        for aspect_info in aspect_infos:
+            aspect = aspect_info["aspect"]
+            positives = self.handle_one_aspect(aspect_info)
+            aspect_sets[aspect] = positives
+            logging.info(f"{aspect}, # positives={len(positives)}")
 
         scoreset = {}
-        candidateset = set.intersection(*itemsets.values())
+        candidateset = set.intersection(*aspect_sets.values())
         logging.info(f"{aspect}, # candidates={len(candidateset)}")
         from debug import check
         check()

@@ -65,6 +65,23 @@ def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
     logging.info("[load_or_build] >>> saving complete.")
     return result
 
+class JSONCache:
+    """Simple disk-backed KV cache with write-through saves."""
+    def __init__(self, path):
+        self.path = Path(path)
+        self.data: loadj(self.path) if self.path.exists() else {}
+
+    def __contains__(self, key):
+        return key in self.data
+
+    def get_or_build(self, key, builder, *args, **kwargs):
+        if key in self.data:
+            return self.data[key]
+        value = builder(*args, **kwargs)
+        self.data[key] = value
+        dumpj(self.path, self.data)
+        return value
+        
 # % --- ensures ---
 
 def _ensure_dir(_dir):
