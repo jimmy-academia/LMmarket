@@ -50,7 +50,7 @@ def loadp(filepath):
     with open(filepath, "rb") as f:
         return pickle.load(f)
 
-def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
+def load_or_build(path, build_fn, *args, save_fn=loadj, load_fn=dumpj, **kwargs):
     path = Path(path)
     if path.exists():
         logging.info(f"[load_or_build] >>> {path} exists, loading...")
@@ -66,7 +66,7 @@ def load_or_build(path, save_fn, load_fn, build_fn, *args, **kwargs):
     return result
 
 class JSONCache:
-    """Simple disk-backed KV cache with write-through saves."""
+    """Simple disk-backed cache with write-through saves."""
     def __init__(self, path):
         self.path = Path(path)
         self.data: loadj(self.path) if self.path.exists() else {}
@@ -81,7 +81,33 @@ class JSONCache:
         self.data[key] = value
         dumpj(self.path, self.data)
         return value
-        
+
+
+class InternalCache:
+    """Per-review JSON blobs keyed by (key, tag)."""
+    # key is review_id or aspect
+    def __init__(self, root):
+        self.root = _ensure_dir(root)
+
+    def _path(self, key):
+        return self.root / f"{key}.json"
+
+    def get(self, key, tag=None, default=None):
+        """If tag is None → return full dict; else return payload for tag."""
+        path = self._path(key)
+        if not path.exists():
+            return default
+        cache = loadj(path)
+        return cache if tag is None else cache.get(tag, default)
+
+    def set(self, key, tag, payload, overwrite=True):
+        """Store raw JSON-serializable payload under tag."""
+        path = self._path(key)
+        cache = loadj(path) if path.exists() else {}
+        if overwrite or tag not in cache:
+            cache[tag] = payload
+            dumpj(path, cache)
+
 # % --- ensures ---
 
 def _ensure_dir(_dir):

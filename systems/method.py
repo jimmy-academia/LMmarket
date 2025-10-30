@@ -3,8 +3,6 @@ import random
 import logging
 from pathlib import Path
 
-from utils import load_or_build, dumpj, loadj
-
 from .base import BaseSystem
 from .helper import _llm_judge_batch
 
@@ -12,83 +10,68 @@ class MainMethod(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
 
-    def recommend_one_query(self, query, aspect_infos):
+    def recommend_a_query(self, query, aspect_infos):
 
-        self.query = query
-        
-        aspect_sets = {}
+        positive_sets = []
         for aspect_info in aspect_infos:
-            aspect = aspect_info["aspect"]
-            positives = self.handle_one_aspect(aspect_info)
-            aspect_sets[aspect] = positives
+            positives = self.handle_one_aspect(query, aspect_info)
             logging.info(f"{aspect}, # positives={len(positives)}")
+            positive_sets.append(positives)
 
-        scoreset = {}
-        candidateset = set.intersection(*aspect_sets.values())
-        logging.info(f"{aspect}, # candidates={len(candidateset)}")
-        from debug import check
-        check()
-        for candidate in candidateset:
-            scoreset[candidate] = self.score_one_candidate(candidate, aspect_list)
+        candidateset = set.intersection(*positives)
+        
+        return candidateset
 
-        rankedset = self.ranking(scoreset)
+    def handle_one_aspect(self, query, aspect_info):
 
-    def handle_one_aspect(self, aspect_info):
-        """
-        LLM-guided retrieval for one aspect.
-        Returns:
-            set(item_id) that have POSITIVE performance for `aspect`.
-        Side effects:
-            - Updates self.aspect_states[aspect]
-            - Updates self.review_aspect_labels[(review_id, aspect)]
-            - Updates self.item_aspect_status[item_id][aspect]
-        """
-        self.aspect = aspect_info['aspect']
-        self.aspect_type = aspect_info['aspect_type']
-        logging.info(f'aspect: {self.aspect} type: {self.aspect_type}')
+        aspect = aspect_info['aspect']
+        aspect_type = aspect_info['aspect_type']
 
-        # --- phase 1 --- obtain by search ---
-        to_review = {}
-        kw = self.aspect
-        retrieved = self.reviews.search(kw, silent=True)
-        to_review = [[obj['review_id'], obj['score'], obj['text'], obj['snippet']] for obj in retrieved]
-        to_review = sorted(to_review, key=lambda x: x[0], reverse=True)
-
-        positives = self.process_to_reviews(to_review)
+        # --- phase 1 --- collect review to process ---
+        ## todo: more sophisticated collection loops
+        collected_reviews = self._collect_reviews(aspect)
+        positives = self._process_reviews(aspect, aspect_type, query, collected_reviews)
+        return positives
         
         # --- phase 2 todo --- brute force check remaining items ---
         
-    def process_to_reviews(self, to_review):
-        seen_items = set()
-        positive_items = set()
+
+    def _collect_reviews(self, aspect)
+        retrieved = self.reviews.search(aspect, silent=True)
+        collected = [[obj['review_id'], obj['score'], obj['text'], obj['snippet']] for obj in retrieved]
+        collected = sorted(collected, key=lambda x: x[0], reverse=True)
+        return collected
+
+    def _process_reviews(self, aspect, aspect_type, query, collected_reviews):
+        '''
+        LM operation on review persistent by self.review_cache
+        item_set persistent by self.aspect_cache
+        '''
+        seen_items = self.aspect_cache.get(aspect, 'seen_items', set())
+        positives = self.aspect_cache.get(aspect, 'positives', set())
         batch_size = 20
-        while to_review:
-            logging.info('='*20)
-            logging.info(f"{len(to_review)}, {len(self.reviews)}, {len(seen_items)}, {len(self.items)}")
-            logging.info('='*20)
-
-            item_ids = []
+        while collected_reviews:
             batch_obj = []
-            for i, obj in enumerate(to_review): 
-                if obj[1] not in item_ids:
-                    item_ids.append(obj[1])
-                    batch_obj.append(to_review.pop(i))
+            judgment_list = []
+            for i, obj in enumerate(to_review):
+                review_id, item_id, text, snippet = obj 
+                if item_id not in seen_items:
+                    seen_items.add(item_id)
+                    judgement = self.review_cache.get(review_id, f'{aspect}_judgement', False)
+                    if not judgement:
+                        batch_obj.append(obj)
+                    else:
+                        judgment_list.append(judgement)
 
-            # review_id, item_id, text, snippet = obj
-            # Step 1. LLM review and judgment
-            judgment_list = _llm_judge_batch(self.aspect, self.aspect_type, self.query, batch_obj)
+            judgment_list += _llm_judge_batch(aspect, aspect_type, query, batch_obj)
             
             for judgement in judgment_list:
                 if judgment["is_conclusive"]:
                     seen_items.add(item_id)
-                    to_review = [r for r in to_review if r[1] != item_id]
                     if judgment["is_positive"]:
-                        positive_items.add(item_id)
+                        positives.add(item_id)
 
-        return positive_items
+        self.aspect_cache.set(aspect, 'seen_items', seen_items)
+        self.aspect_cache.set(aspect, 'positives', positives)
+        return positives
 
-    def score_one_candidate(self, candidate, aspect_list):
-        pass
-
-    def ranking(self, scoreset):
-        pass

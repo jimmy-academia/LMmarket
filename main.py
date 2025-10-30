@@ -5,7 +5,7 @@ from pathlib import Path
 
 from data import prepare_data, pick_city_data
 from systems import build_system
-from utils import load_or_build, readf, dumpj, loadj, _ensure_dir, set_seeds, set_logging, _ensure_pathref
+from utils import load_or_build, _ensure_dir, set_seeds, set_logging, _ensure_pathref
 
 import logging 
 
@@ -45,7 +45,7 @@ def main():
     args = get_arguments()
     args = _resolve_args(args)
     args.prepared_data_path = args.cache_dir/f'{args.dset}_data.json'
-    data = load_or_build(args.prepared_data_path, dumpj, loadj, prepare_data, args)
+    data = load_or_build(args.prepared_data_path, prepare_data, args)
 
     if args.city is not None:
         data = pick_city_data(data, args.city)
@@ -61,7 +61,7 @@ def main():
     ## obtains candidate set per query in self.query_aspect (aspect persistent in output_dir)
     system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])
 
-    system.evaluate()
+    # ranker(system)
 
 if __name__ == '__main__':
     main()

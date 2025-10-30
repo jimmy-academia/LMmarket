@@ -1,4 +1,4 @@
-from utils import JSONCache
+from utils import JSONCache, InternalCache
 from .helper import _decompose_aspect, _generate_aspect_info, 
 
 class BaseSystem:
@@ -15,8 +15,11 @@ class BaseSystem:
         self.items = ItemSearchable(data['items'], self.reviews)
 
         self.aspect_info_cache = JSONCache(args.output_dir/"query_aspect_infos.json")
-        self.candidate_cache = JSONCache(args.output_dir/f"{args.system}_query_candidates.json")
-        self.score_cache = JSONCache(args.output_dir/f"query_item_scores.json")
+        city_tag = "_"+ args.city if args.city else ""
+        self.candidate_cache = JSONCache(args.output_dir/f"{args.system}{city_tag}_query_candidates.json")
+
+        self.review_cache = InternalCache(args.cache_dir/f"{args.system}{city_tag}_review")
+        self.aspect_cache = InternalCache(args.cache_dir/f"aspect_{args.system}{city_tag}")
 
     def _build_aspect_infos(self, query):
         aspect_list = _decompose_aspect(query)
@@ -30,14 +33,22 @@ class BaseSystem:
 
             candidates = self.candidate_cache.get_or_build(query, self.recommend_a_query, query, aspect_infos)
 
-            scores = self.score_cache.get_or_build(query, self.examine)
+            self.score(query, aspect_infos, candidates)
 
-    def recommend_a_query(self, query, aspect_infos)
+    def recommend_a_query(self, query, aspect_infos):
         raise NotImplementedError
 
-    def examine(self, candidate_list):
+    def score(self, query, aspect_infos, candidates):
         for candidate in candidate_list:
-            self._evaluate_one_candidate(candidate)
+            for aspect_info in aspect_infos:
+                self._score_a_case(query, aspect_info, candidate)
 
-    def _evaluate_one_candidate(self, item_id):
-        pass
+    def _score_a_case(self, query, aspect_info, candidate):
+
+
+
+
+
+
+
+

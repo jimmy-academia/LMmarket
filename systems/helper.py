@@ -139,7 +139,7 @@ def _llm_judge_item_prompt(aspect, aspect_type, query, review_text, snippet):
         "is_conclusive": bool,
         "is_positive": bool,
         "confidence": float,
-        "new_keywords": str
+        # "new_keywords": str
       }
     """
     rubric = {
