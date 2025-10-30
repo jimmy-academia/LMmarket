@@ -1,18 +1,19 @@
 # api.py
 import io
-import re
 import time
 import json
 import logging
+
 import asyncio
-import openai
-from openai import AsyncOpenAI
-from utils import readf, dumpj 
+import operator
+from threading import Lock
 from tqdm.asyncio import tqdm as tqdm_asyncio
 
-import operator
-
+import openai
+from openai import AsyncOpenAI
 from pathlib import Path
+
+from utils import readf, dumpj 
 
 user_struct = lambda x: {"role": "user", "content": x}
 system_struct = lambda x: {"role": "system", "content": x}
@@ -37,6 +38,35 @@ def get_async_openai_client():
     if async_openai_client is None:
         async_openai_client = AsyncOpenAI(api_key=readf(".openaiapi_key"))
     return async_openai_client
+
+
+# ---- global cost meter (minimal) ----
+_COST_LOCK = Lock()
+_COST_TOTALS = {"pt": 0, "ct": 0, "usd": 0.0}
+
+DEFAULT_MODEL = "gpt-5-nano"
+
+def cost_now(_type="usd"):
+    with _COST_LOCK:
+        if _type == "usd":
+            return float(_COST_TOTALS["usd"])
+        elif _type == "tokens":
+            return int(_COST_TOTALS["pt"] + _COST_TOTALS["ct"])
+        elif _type == "breakdown":
+            return dict(_COST_TOTALS)
+        elif _type == "all":
+            return int(_COST_TOTALS["pt"]), int(_COST_TOTALS["ct"]), float(_COST_TOTALS["usd"])
+
+def record_usage(resp, model):
+    pt, ct = _extract_usage(resp)
+    usd = float(_estimate_cost_usd(model, pt, ct))
+    with _COST_LOCK:
+        _COST_TOTALS["pt"] += int(pt)
+        _COST_TOTALS["ct"] += int(ct)
+        _COST_TOTALS["usd"] += usd
+    
+    return pt, ct, usd
+
 
 # --- pricing -----------------------------------------------------------------
 # USD per token (input/output). Keep this map up to date with OpenAI pricing.
@@ -87,7 +117,7 @@ def prep_msg(prompt):
         return prompt
     
 # ---- query (sync) ----
-def query_llm(messages, model="gpt-5-nano", temperature=0.1, verbose=False, json_schema=None, use_json=False):
+def query_llm(messages, model=DEFAULT_MODEL, temperature=0.1, verbose=False, json_schema=None, use_json=False):
     client = get_openai_client()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -104,15 +134,15 @@ def query_llm(messages, model="gpt-5-nano", temperature=0.1, verbose=False, json
     resp = client.chat.completions.create(**kwargs)
     content = resp.choices[0].message.content
 
+    pt, ct, usd = record_usage(resp, model)
+
     if verbose:
-        pt, ct = _extract_usage(resp)
-        cost = _estimate_cost_usd(model, pt, ct)
-        print(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${cost:.6f}")
+        print(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${usd:.6f}")
 
     return content
 
 # ---- query (async) ----
-async def query_llm_async(messages, model="gpt-5-nano", temperature=0.1, sem=None, verbose=False, return_usage=False, json_schema=None, use_json=False):
+async def query_llm_async(messages, model=DEFAULT_MODEL, temperature=0.1, sem=None, verbose=False, return_usage=False, json_schema=None, use_json=False):
     """
     If return_usage=True, returns (content, pt, ct); else returns content.
     """
@@ -136,15 +166,14 @@ async def query_llm_async(messages, model="gpt-5-nano", temperature=0.1, sem=Non
         resp = await client.chat.completions.create(**kwargs)
         content = resp.choices[0].message.content
 
-        pt, ct = _extract_usage(resp)
+        pt, ct, usd = record_usage(resp, model)
         if verbose:
-            cost = _estimate_cost_usd(model, pt, ct)
-            print(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${cost:.6f}")
+            logging.info(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${usd:.6f}")
 
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def batch_run_llm(prompts, task_name=None, model="gpt-5-nano", temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
@@ -161,7 +190,7 @@ def batch_run_llm(prompts, task_name=None, model="gpt-5-nano", temperature=0.1, 
         schema_list = _listify(json_schema)
         use_json_list = list(map(operator.or_,  _listify(use_json), map(bool, schema_list)))
 
-        async def one(idx, p, schema, use_j, with_usage):
+        async def one(idx, p, schema, use_j):
             try:
                 messages = prep_msg(p)
                 result = await query_llm_async(
@@ -170,22 +199,22 @@ def batch_run_llm(prompts, task_name=None, model="gpt-5-nano", temperature=0.1, 
                     temperature=temperature,
                     sem=sem,
                     verbose=False,
-                    return_usage=with_usage,
+                    return_usage=True,
                     json_schema=schema,
                     use_json=use_j,
                 )
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")
-                result = ("{}", 0, 0) if with_usage else "{}"
+                result = ("{}", 0, 0) 
 
-            if with_usage:
-                content, pt, ct = result
-                return idx, content, pt, ct
-            return idx, result
+            content, pt, ct = result
+            return idx, content, pt, ct
+
+        tasks = [one(i, p, schema_list[i], use_json_list[i]) for i, p in enumerate(prompts)]
+        outs = [None] * len(prompts)
 
         if verbose:
-            tasks = [one(i, p, schema_list[i], use_json_list[i], True) for i, p in enumerate(prompts)]
-            outs = [None] * len(prompts)
+            start_usd = cost_now()  # snapshot the global meter
             total_pt = 0
             total_ct = 0
             for fut in tqdm_asyncio.as_completed(tasks, total=len(prompts), desc="LLM batch", ncols=88):
@@ -193,76 +222,24 @@ def batch_run_llm(prompts, task_name=None, model="gpt-5-nano", temperature=0.1, 
                 outs[idx] = content
                 total_pt += pt
                 total_ct += ct
-            total_cost = _estimate_cost_usd(model, total_pt, total_ct)
+            # Do NOT bump the meter again here—each call already recorded via record_usage()
+            est = _estimate_cost_usd(model, total_pt, total_ct)
+            delta_usd = cost_now() - start_usd
             print(
                 f"[LLM] batch complete. prompt_tokens={total_pt} "
-                f"completion_tokens={total_ct} est_cost=${total_cost:.6f}"
+                f"completion_tokens={total_ct} est_cost=${est:.6f} (meter +${delta_usd:.6f})"
             )
             return outs
-        
-        tasks = [one(i, p, schema_list[i], use_json_list[i], False) for i, p in enumerate(prompts)]
-        results = await asyncio.gather(*tasks)
-        results.sort(key=lambda item: item[0])
-        return [content for _, content in results]
 
+        # non-verbose: gather preserves task order; fill outputs directly
+        results = await asyncio.gather(*tasks)
+        for idx, content, *_ in results:
+            outs[idx] = content
+        return outs
     return asyncio.run(_runner())
 
-# ---- utils ----
-
-def safe_json_parse(output_str):
-    """
-    Parse LLM output into a Python object (dict or list).
-    - Strips code fences / stray whitespace
-    - Normalizes smart quotes
-    - Fixes common LLM JSON glitches:
-        * semicolons between objects -> commas
-        * missing comma between `}{` -> `},{`
-        * trailing commas before } or ]
-    - Truncates to the last closing } or ] (to ignore "..."/logs after JSON)
-    - Returns {} on failure
-    """
-    if output_str is None:
-        return {}
-    if isinstance(output_str, (dict, list)):
-        return output_str
-
-    s = str(output_str).strip()
-
-    # remove leading/trailing code fences + surrounding whitespace
-    s = re.sub(r"^\s*```(?:json)?\s*", "", s)
-    s = re.sub(r"\s*```\s*$", "", s).strip()
-
-    # normalize smart quotes
-    s = s.translate(str.maketrans({
-        "“": '"', "”": '"', "„": '"', "‟": '"',
-        "‘": "'", "’": "'", "‚": "'", "‛": "'",
-    }))
-
-    # common fixes
-    # 1) semicolon between objects -> comma
-    s = re.sub(r"}\s*;\s*{", "},{", s)
-
-    # 2) missing comma between objects: `}{` -> `},{`
-    s = re.sub(r"}\s*{", "},{", s)
-
-    # 3) remove trailing commas before } or ]
-    s = re.sub(r",\s*(?=[}\]])", "", s)
-
-    # 4) keep only up to the last closing bracket/brace (drop logs like "...")
-    last_close = max(s.rfind("]"), s.rfind("}"))
-    if last_close != -1:
-        s = s[:last_close + 1]
-
-    try:
-        data = json.loads(s)
-        return data if isinstance(data, (dict, list)) else {}
-    except Exception as e:
-        # show a short context around the error to help debugging
-        logging.warning(f"JSON parse failed: {e} | text={s}")
-        return {}
-
-
-def dep_run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, verbose=False, poll_interval=5, json_list=None):
+def use_batch_api_run(messages_list, model=DEFAULT_MODEL, temperature=0.1, verbose=False, poll_interval=5, json_list=None):
+    logging.warning("takes hours!!!")
     """
     OpenAI Batch API (memory-only JSONL). Returns list[str] in input order.
 
@@ -324,7 +301,7 @@ def dep_run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, ve
         completion_window="24h",
     )
     if verbose:
-        print(f"[LLM batch] id={batch.id} status={getattr(batch, 'status', None)}")
+        logging.info(f"[LLM batch] id={batch.id} status={getattr(batch, 'status', None)}")
 
     # Poll
     pending_statuses = {"validating", "queued", "in_progress", "finalizing"}
@@ -332,7 +309,7 @@ def dep_run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, ve
         time.sleep(max(1, poll_interval))
         batch = client.batches.retrieve(batch.id)
         if verbose:
-            print(f"[LLM batch] status={getattr(batch, 'status', None)}")
+            logging.info(f"[LLM batch] status={getattr(batch, 'status', None)}")
 
     if getattr(batch, "status", None) != "completed":
         logging.error(f"[LLM batch] ended with status={getattr(batch, 'status', None)}")
@@ -372,9 +349,14 @@ def dep_run_llm_batch_api(messages_list, model="gpt-5-nano", temperature=0.1, ve
         total_pt += int(usage.get("prompt_tokens") or 0)
         total_ct += int(usage.get("completion_tokens") or 0)
 
+    record_usage(SimpleNamespace(usage={
+        "prompt_tokens": total_pt,
+        "completion_tokens": total_ct
+    }), model)
+
     if verbose:
         cost = _estimate_cost_usd(model, total_pt, total_ct)
-        print(f"[LLM batch] prompt_tokens={total_pt} completion_tokens={total_ct} est_cost=${cost:.6f}")
+        logging.info(f"[LLM batch] prompt_tokens={total_pt} completion_tokens={total_ct} est_cost=${cost:.6f}")
 
     # Align to input order
     return [outputs.get(f"prompt-{i}") for i in range(len(messages_list))]
