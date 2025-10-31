@@ -49,6 +49,7 @@ class MainMethod(BaseSystem):
         '''
         concluded = self.aspect_cache.get(aspect, 'concluded', set())
         positives = self.aspect_cache.get(aspect, 'positives', set())
+        concluded, positives = set(concluded), set(positives)
         
         pbar = None
         if verbose: pbar = tqdm(total=len(collected_reviews), desc=f"{aspect}: judging", ncols=88)
@@ -84,8 +85,8 @@ class MainMethod(BaseSystem):
             start_idx += i + 1
             if pbar: pbar.update(i+1)
 
-        self.aspect_cache.set(aspect, 'concluded', concluded)
-        self.aspect_cache.set(aspect, 'positives', positives)
+        self.aspect_cache.set(aspect, 'concluded', list(concluded))
+        self.aspect_cache.set(aspect, 'positives', list(positives))
         
         if pbar: pbar.close()
         return positives
