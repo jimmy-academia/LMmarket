@@ -1,0 +1,32 @@
+{
+    "Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours.": [
+        {
+            "aspect_type": "ontological", "starter_keywords": ["cafe", "coffee shop", "coffeehouse", "coffee bar", "espresso bar", "coffee venue"],
+            "aspect": "cafe"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["quiet", "low noise", "calm", "peaceful", "tranquil", "hushed", "soft ambiance"],
+            "aspect": "quiet"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["cozy", "warm atmosphere", "intimate seating", "comfortable ambiance", "snug feel", "inviting space"],
+            "aspect": "cozy"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["comfortable seating", "ergonomic seating", "plush seating", "soft seating", "comfortable chairs", "cozy seating", "supportive seating"],
+            "aspect": "comfortable seating"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["good natural light", "ample daylight", "sunlit interior", "daylight-filled space", "well-lit by daylight", "bright with natural light"],
+            "aspect": "good natural light"
+        },
+        {
+            "aspect_type": "teleological", "starter_keywords": ["reading", "quiet study", "bookish atmosphere", "literary environment", "cozy study space", "bibliophile-friendly vibe", "literate ambiance"],
+            "aspect": "reading"
+        },
+        {
+            "aspect_type": "teleological", "starter_keywords": ["few hours", "duration", "visit duration", "length of stay", "stay length", "time span", "hours-long stay"],
+            "aspect": "few hours"
+        }
+    ]
+}

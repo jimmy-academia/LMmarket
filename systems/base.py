@@ -1,3 +1,4 @@
+import logging
 from utils import JSONCache, InternalCache
 from .searchable import Searchable, ItemSearchable
 from .helper import _decompose_aspect, _generate_aspect_info
@@ -10,8 +11,9 @@ class BaseSystem:
     self.embedding (segments)
     '''
     def __init__(self, args, data):
+
+        logging.info('[Base] initializing...')
         self.args = args
-        
         self.reviews = Searchable(data['reviews'])
         self.items = ItemSearchable(data['items'], self.reviews)
 

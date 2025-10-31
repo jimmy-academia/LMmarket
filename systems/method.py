@@ -57,10 +57,10 @@ class MainMethod(BaseSystem):
         while start_idx < len(collected_reviews):
             batch_obj = []
 
-            for i, obj in enumerate(collected_reviews[start_idx:]):
+            for i, obj in enumerate(tqdm(collected_reviews[start_idx:], ncols=88, desc="collecting...", leave=False)):
                 review_id, item_id, text, snippet = obj 
 
-                if item_id in concluded or item_id in scheduled_items:
+                if item_id in concluded or item_id in [x[1] for x in batch_obj]:
                     continue
 
                 if self.review_cache.get(review_id, f'{aspect}_judgement', False):
@@ -72,17 +72,17 @@ class MainMethod(BaseSystem):
 
             if batch_obj:
                 judgment_list = _llm_judge_batch(aspect, aspect_type, query, batch_obj)
-                for judgement, obj in zip(judgment_list, batch_obj):
+                for judgment, obj in zip(judgment_list, batch_obj):
                     review_id, item_id, text, snippet = obj 
                     self.review_cache.set(review_id, f'{aspect}_judgement', judgment)
-                    
+
                     if judgment["is_conclusive"]:
                         concluded.add(item_id)
                         if judgment["is_positive"]:
                             positives.add(item_id)
 
             start_idx += i + 1
-            if pbar: pbar.update(i)
+            if pbar: pbar.update(i+1)
 
         self.aspect_cache.set(aspect, 'concluded', concluded)
         self.aspect_cache.set(aspect, 'positives', positives)
