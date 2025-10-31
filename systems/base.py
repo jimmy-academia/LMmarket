@@ -18,11 +18,11 @@ class BaseSystem:
         self.items = ItemSearchable(data['items'], self.reviews)
 
         self.aspect_info_cache = JSONCache(args.output_dir/"query_aspect_infos.json")
-        city_tag = "_"+ args.city if args.city else ""
+        city_tag = "_"+ args.city if args.city else "full"
         self.candidate_cache = JSONCache(args.output_dir/f"{args.system}{city_tag}_query_candidates.json")
 
-        self.review_cache = InternalCache(args.cache_dir/f"{args.system}{city_tag}_review")
-        self.aspect_cache = InternalCache(args.cache_dir/f"aspect_{args.system}{city_tag}")
+        self.review_cache = InternalCache(args.cache_dir/f"{city_tag}_review")
+        self.aspect_cache = InternalCache(args.cache_dir/f"{city_tag}_aspect")
 
     def _build_aspect_infos(self, query):
         aspect_list = _decompose_aspect(query)
