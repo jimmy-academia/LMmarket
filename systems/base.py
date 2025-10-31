@@ -1,5 +1,6 @@
 from utils import JSONCache, InternalCache
-from .helper import _decompose_aspect, _generate_aspect_info, 
+from .searchable import Searchable, ItemSearchable
+from .helper import _decompose_aspect, _generate_aspect_info
 
 class BaseSystem:
     '''
@@ -44,8 +45,7 @@ class BaseSystem:
                 self._score_a_case(query, aspect_info, candidate)
 
     def _score_a_case(self, query, aspect_info, candidate):
-
-
+        pass
 
 
 

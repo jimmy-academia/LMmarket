@@ -50,7 +50,7 @@ def loadp(filepath):
     with open(filepath, "rb") as f:
         return pickle.load(f)
 
-def load_or_build(path, build_fn, *args, save_fn=loadj, load_fn=dumpj, **kwargs):
+def load_or_build(path, build_fn, *args, save_fn=dumpj, load_fn=loadj, **kwargs):
     path = Path(path)
     if path.exists():
         logging.info(f"[load_or_build] >>> {path} exists, loading...")
@@ -69,7 +69,7 @@ class JSONCache:
     """Simple disk-backed cache with write-through saves."""
     def __init__(self, path):
         self.path = Path(path)
-        self.data: loadj(self.path) if self.path.exists() else {}
+        self.data = loadj(self.path) if self.path.exists() else {}
 
     def __contains__(self, key):
         return key in self.data

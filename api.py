@@ -8,6 +8,7 @@ import asyncio
 import operator
 from threading import Lock
 from tqdm.asyncio import tqdm as tqdm_asyncio
+from types import SimpleNamespace
 
 import openai
 from openai import AsyncOpenAI

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .base import BaseSystem
 from .helper import _llm_judge_batch
+from tqdm import tqdm
 
 class MainMethod(BaseSystem):
     def __init__(self, args, data):
@@ -14,6 +15,7 @@ class MainMethod(BaseSystem):
 
         positive_sets = []
         for aspect_info in aspect_infos:
+            logging.info(f"[recommend_a_query]->{aspect_info['aspect']}")
             positives = self.handle_one_aspect(query, aspect_info)
             logging.info(f"{aspect}, # positives={len(positives)}")
             positive_sets.append(positives)
@@ -23,7 +25,6 @@ class MainMethod(BaseSystem):
         return candidateset
 
     def handle_one_aspect(self, query, aspect_info):
-
         aspect = aspect_info['aspect']
         aspect_type = aspect_info['aspect_type']
 
@@ -34,44 +35,58 @@ class MainMethod(BaseSystem):
         return positives
         
         # --- phase 2 todo --- brute force check remaining items ---
-        
 
-    def _collect_reviews(self, aspect)
+    def _collect_reviews(self, aspect):
         retrieved = self.reviews.search(aspect, silent=True)
         collected = [[obj['review_id'], obj['score'], obj['text'], obj['snippet']] for obj in retrieved]
         collected = sorted(collected, key=lambda x: x[0], reverse=True)
         return collected
 
-    def _process_reviews(self, aspect, aspect_type, query, collected_reviews):
+    def _process_reviews(self, aspect, aspect_type, query, collected_reviews, batch_size=20, verbose=True):
         '''
         LM operation on review persistent by self.review_cache
         item_set persistent by self.aspect_cache
         '''
-        seen_items = self.aspect_cache.get(aspect, 'seen_items', set())
+        concluded = self.aspect_cache.get(aspect, 'concluded', set())
         positives = self.aspect_cache.get(aspect, 'positives', set())
-        batch_size = 20
-        while collected_reviews:
+        
+        pbar = None
+        if verbose: pbar = tqdm(total=len(collected_reviews), desc=f"{aspect}: judging", ncols=88)
+
+        start_idx = 0
+        while start_idx < len(collected_reviews):
             batch_obj = []
-            judgment_list = []
-            for i, obj in enumerate(to_review):
+
+            for i, obj in enumerate(collected_reviews[start_idx:]):
                 review_id, item_id, text, snippet = obj 
-                if item_id not in seen_items:
-                    seen_items.add(item_id)
-                    judgement = self.review_cache.get(review_id, f'{aspect}_judgement', False)
-                    if not judgement:
-                        batch_obj.append(obj)
-                    else:
-                        judgment_list.append(judgement)
 
-            judgment_list += _llm_judge_batch(aspect, aspect_type, query, batch_obj)
-            
-            for judgement in judgment_list:
-                if judgment["is_conclusive"]:
-                    seen_items.add(item_id)
-                    if judgment["is_positive"]:
-                        positives.add(item_id)
+                if item_id in concluded or item_id in scheduled_items:
+                    continue
 
-        self.aspect_cache.set(aspect, 'seen_items', seen_items)
+                if self.review_cache.get(review_id, f'{aspect}_judgement', False):
+                    continue                    
+                
+                batch_obj.append(obj)
+                if len(batch_obj) >= batch_size:
+                    break
+
+            if batch_obj:
+                judgment_list = _llm_judge_batch(aspect, aspect_type, query, batch_obj)
+                for judgement, obj in zip(judgment_list, batch_obj):
+                    review_id, item_id, text, snippet = obj 
+                    self.review_cache.set(review_id, f'{aspect}_judgement', judgment)
+                    
+                    if judgment["is_conclusive"]:
+                        concluded.add(item_id)
+                        if judgment["is_positive"]:
+                            positives.add(item_id)
+
+            start_idx += i + 1
+            if pbar: pbar.update(i)
+
+        self.aspect_cache.set(aspect, 'concluded', concluded)
         self.aspect_cache.set(aspect, 'positives', positives)
+        
+        if pbar: pbar.close()
         return positives
 
