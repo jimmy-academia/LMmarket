@@ -168,7 +168,7 @@ def _llm_judge_batch(aspect, aspect_type, query, batch_obj):
         review_id, item_id, text, snippet = obj
         messages = _llm_judge_item_prompt(aspect, aspect_type, query, text, snippet)
         messages_list.append(messages)
-    results = batch_run_llm(messages_list, json_schema=LLM_JUDGE_SCHEMA)
+    results = batch_run_llm(messages_list, json_schema=LLM_JUDGE_SCHEMA, verbose=True)
     results = [json.loads(raw) for raw in results]
     return results
 

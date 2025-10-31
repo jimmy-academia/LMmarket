@@ -57,7 +57,7 @@ class MainMethod(BaseSystem):
         while start_idx < len(collected_reviews):
             batch_obj = []
 
-            for i, obj in enumerate(tqdm(collected_reviews[start_idx:], ncols=88, desc="collecting...", leave=False)):
+            for i, obj in enumerate(collected_reviews[start_idx:]):
                 review_id, item_id, text, snippet = obj 
 
                 if item_id in concluded or item_id in [x[1] for x in batch_obj]:

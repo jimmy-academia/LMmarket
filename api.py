@@ -138,7 +138,7 @@ def query_llm(messages, model=DEFAULT_MODEL, temperature=0.1, verbose=False, jso
     pt, ct, usd = record_usage(resp, model)
 
     if verbose:
-        print(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${usd:.6f}")
+        logging.info(f"[LLM] model={model} prompt_tokens={pt} completion_tokens={ct} est_cost=${usd:.6f}")
 
     return content
 
@@ -174,7 +174,7 @@ async def query_llm_async(messages, model=DEFAULT_MODEL, temperature=0.1, sem=No
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=8, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=4, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
@@ -218,7 +218,7 @@ def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1,
             start_usd = cost_now()  # snapshot the global meter
             total_pt = 0
             total_ct = 0
-            for fut in tqdm_asyncio.as_completed(tasks, total=len(prompts), desc="LLM batch", ncols=88):
+            for fut in tqdm_asyncio.as_completed(tasks, total=len(prompts), desc="LLM batch", ncols=88, leave=int(verbose)>=2):
                 idx, content, pt, ct = await fut
                 outs[idx] = content
                 total_pt += pt
@@ -226,7 +226,7 @@ def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1,
             # Do NOT bump the meter again here—each call already recorded via record_usage()
             est = _estimate_cost_usd(model, total_pt, total_ct)
             delta_usd = cost_now() - start_usd
-            print(
+            if int(verbose)>=2: logging.info(
                 f"[LLM] batch complete. prompt_tokens={total_pt} "
                 f"completion_tokens={total_ct} est_cost=${est:.6f} (meter +${delta_usd:.6f})"
             )
