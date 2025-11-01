@@ -245,4 +245,8 @@ def _llm_score_batch(aspect, query, texts):
         messages_list.append(messages)
     results = batch_run_llm(messages_list, json_schema=LLM_SCORE_SCHEMA, verbose=True)
     results = [json.loads(raw) for raw in results]
+    print(results)
+    from debug import check
+    check()
+    
     return results
