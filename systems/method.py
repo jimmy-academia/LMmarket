@@ -12,7 +12,7 @@ class MainMethod(BaseSystem):
         super().__init__(args, data)
 
     def recommend_a_query(self, query, aspect_infos):
-        aspect_ranked = self.aspect_info_cache.get_or_build(query, self._rank_aspects, f"RANKED_ASPECT_LIST:{query}")
+        # aspect_ranked = self.aspect_info_cache.get_or_build(query, self._rank_aspects, f"RANKED_ASPECT_LIST:{query}")
         
         positive_sets = []
         for aspect_info in aspect_infos:

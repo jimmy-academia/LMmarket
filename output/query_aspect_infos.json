@@ -54,5 +54,23 @@
             "aspect_type": "teleological", "starter_keywords": ["few hours", "duration", "visit duration", "length of stay", "stay length", "time span", "hours-long stay"],
             "aspect": "few hours"
         }
+    ],
+    "Find a quiet, cozy cafe with comfortable seating.": [
+        {
+            "aspect_type": "ontological", "starter_keywords": ["cafe", "coffee shop", "coffeehouse", "coffee bar", "espresso bar", "coffee venue"],
+            "aspect": "cafe"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["quiet", "low noise", "calm", "peaceful", "tranquil", "hushed", "soft ambiance"],
+            "aspect": "quiet"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["cozy", "warm atmosphere", "intimate seating", "comfortable ambiance", "snug feel", "inviting space"],
+            "aspect": "cozy"
+        },
+        {
+            "aspect_type": "functional", "starter_keywords": ["comfortable seating", "ergonomic seating", "plush seating", "soft seating", "comfortable chairs", "cozy seating", "supportive seating"],
+            "aspect": "comfortable seating"
+        }
     ]
 }

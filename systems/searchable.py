@@ -23,7 +23,6 @@ class Searchable:
     def __iter__(self):
         return iter(self.reviews)
 
-
     def _tok(self, t):
         return re.findall(r"\w+", (t or "").lower())
 
@@ -43,7 +42,7 @@ class Searchable:
         if end < len(text): snippet = snippet + "…"
         return snippet, hit
 
-    def search(self, query, topk=None, silent=False):
+    def search(self, query, topk=None, silent=False, item_id=None):
         if topk is None:
             topk = self.length
 
@@ -54,6 +53,10 @@ class Searchable:
         out = []
         for i in idx:
             review  = self.reviews[i]
+
+            if item_id is not None and review['item_id'] != item_id:
+                continue
+
             text = review['text']
             snippet, hit = self._make_snippet(text, q)
             if hit:
@@ -85,7 +88,7 @@ class ItemSearchable:
         return iter(self.items)
 
 
-    def search(self, query, topk=5, topm=10, review_k=None, agg="sum", silent=False): 
+    def search(self, query, topk=5, topm=10, review_k=None, agg="sum", silent=False, item_id = None): 
         # agg = 'sum' | 'mean' | 'max' over topm review scores
         
         if review_k is None:

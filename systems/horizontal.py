@@ -7,7 +7,7 @@ from .base import BaseSystem
 from .helper import _llm_judge_batch
 from tqdm import tqdm
 
-class MainMethod(BaseSystem):
+class HorizontalMethod(BaseSystem):
     def __init__(self, args, data):
         super().__init__(args, data)
 
@@ -20,6 +20,14 @@ class MainMethod(BaseSystem):
             positives = self.handle_one_aspect(query, aspect_info)
             logging.info(f"{aspect}, # positives={len(positives)}")
             positive_sets.append(positives)
+        
+        candidates = set.intersection(*positive_sets)
+        logging.info(f"{aspect}, # candidates={len(candidates)}")
+
+        scoreset = self.score(query, aspect_infos, candidates)
+        rankedset = self.rank(scoreset)
+        
+        return candidates
             
     def handle_one_aspect(self, query, aspect_info):
         aspect = aspect_info['aspect']

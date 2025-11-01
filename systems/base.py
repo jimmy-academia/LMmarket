@@ -1,7 +1,9 @@
 import logging
+from statistics import mean
+
 from utils import JSONCache, InternalCache
 from .searchable import Searchable, ItemSearchable
-from .helper import _decompose_aspect, _generate_aspect_info
+from .helper import _decompose_aspect, _generate_aspect_info, _llm_score_batch
 
 class BaseSystem:
     '''
@@ -42,15 +44,55 @@ class BaseSystem:
         raise NotImplementedError
 
     def score(self, query, aspect_infos, candidates):
-        for candidate in candidate_list:
+        scoreset = {}
+        for candidate in candidates:
+            all_scores = []
             for aspect_info in aspect_infos:
-                self._score_a_case(query, aspect_info, candidate)
+                dual_set_scores = self._score_a_case(query, aspect_info, candidate)
+                all_scores.append(dual_set_scores)
+            scoreset[candidate] = all_scores
+        return scoreset
 
     def _score_a_case(self, query, aspect_info, candidate):
-        pass
+        scores = []
+        aspect = aspect_info['aspect']
+        retrieved = self.reviews.search(aspect, silent=True, item_id=candidate)
 
+        review_id_list = []
+        texts = []
+        for obj in retrieved:
+            review_id = obj['review_id']
+            result = self.review_cache.get(review_id, f'{aspect}_score', False)
+            if not result:
+                review_id_list.append(review_id)
+                texts.append(obj['text'])
+            else:
+                scores.append(result['score']) 
+                
+        results = _llm_score_batch(aspect, query, texts)
+        for result, review_id in zip(results, review_id_list):
+            self.review_cache.get(review_id, f'{aspect}_score', result)
+            scores.append(result['score'])
 
+        # reorg split positive, negative
+        dual_set_scores = [[], []]
+        for score in scores:
+            if score > 0.5:
+                dual_set_scores[0].append(score)
+            elif score < 0.5:
+                dual_set_scores[1].append(score)
 
+        return dual_set_scores
+
+    def rank(self, scoreset):
+        logging.info('CAUSION: temporary ranking by average of positive set')
+        full_list = []
+        for candidate, all_scores in scoreset.items():
+            avg_score = mean([mean(x[0]) if x[0] else 0 for x in all_scores]) 
+            full_list.append((candidate, avg_score))
+        rankedset = [c for c, _ in sorted(full_list, key=lambda x: x[1], reverse=True)]
+
+        return rankedset
 
 
 

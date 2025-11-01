@@ -15,7 +15,8 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='method')
+    parser.add_argument('--system', type=str, default='horizontal')
+    # parser.add_argument('--system', type=str, default='method')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--output_dir', type=str, default='output')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
@@ -59,7 +60,8 @@ def main():
     system = build_system(args, data)
     # future, load and feed query_list
     ## obtains candidate set per query in self.query_aspect (aspect persistent in output_dir)
-    system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
+    system.recommend(["Find a quiet, cozy cafe with comfortable seating."])
+    # system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
     # system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])
 
     # ranker(system)
