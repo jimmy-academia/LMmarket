@@ -59,7 +59,8 @@ def main():
     system = build_system(args, data)
     # future, load and feed query_list
     ## obtains candidate set per query in self.query_aspect (aspect persistent in output_dir)
-    system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])
+    system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
+    # system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])
 
     # ranker(system)
 

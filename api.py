@@ -16,6 +16,8 @@ from pathlib import Path
 
 from utils import readf, dumpj 
 
+logging.getLogger("openai").setLevel(logging.WARNING)
+
 user_struct = lambda x: {"role": "user", "content": x}
 system_struct = lambda x: {"role": "system", "content": x}
 developer_struct = lambda x: {"role": "developer", "content": x}

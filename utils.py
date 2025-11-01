@@ -98,6 +98,7 @@ class InternalCache:
         if not path.exists():
             return default
         cache = loadj(path)
+        # logging.info(f"[InternalCache] >>> getting {tag} from {path}..")
         return cache if tag is None else cache.get(tag, default)
 
     def set(self, key, tag, payload, overwrite=True):
@@ -107,6 +108,7 @@ class InternalCache:
         if overwrite or tag not in cache:
             cache[tag] = payload
             dumpj(path, cache)
+            # logging.info(f"[InternalCache] >>> saved {tag} to {path}..")
 
 # % --- ensures ---
 

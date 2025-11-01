@@ -12,8 +12,7 @@ class MainMethod(BaseSystem):
         super().__init__(args, data)
 
     def recommend_a_query(self, query, aspect_infos):
-        aspect_ranked = self.aspect_info_cache.get_or_build(query, self._rank_aspects, f"RANKED_ASPECT_LIST:{query}")
-        
+
         positive_sets = []
         for aspect_info in aspect_infos:
             aspect = aspect_info['aspect']
@@ -21,7 +20,7 @@ class MainMethod(BaseSystem):
             positives = self.handle_one_aspect(query, aspect_info)
             logging.info(f"{aspect}, # positives={len(positives)}")
             positive_sets.append(positives)
-
+            
     def handle_one_aspect(self, query, aspect_info):
         aspect = aspect_info['aspect']
         aspect_type = aspect_info['aspect_type']
