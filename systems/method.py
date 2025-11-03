@@ -23,6 +23,8 @@ class MainMethod(BaseSystem):
         
         candidates = set.intersection(*positive_sets)
         logging.info(f"# final candidates={len(candidates)}")
+
+        
         scoreset = self.score(query, aspect_infos, candidates)
         finallist = self.rank(scoreset)
         

@@ -3,7 +3,7 @@ import logging
 from api import batch_run_llm, user_struct, system_struct
 
 SYSTEM_MESSAGE_score = (
-    "You are a precise and impartial evaluator. "
+    "You are a precise review evaluator. "
     "Score how well a REVIEW TEXT supports one ASPECT of a multi-aspect user query. "
     "Use only explicit textual evidence (allow reasonable synonyms). "
     "Ignore other aspects. Do not assume facts not in the review.\n\n"
@@ -15,44 +15,33 @@ SYSTEM_MESSAGE_score = (
     "  0.40  = Slightly negative / mixed but leans negative\n"
     "  0.20  = Moderately negative (clear criticism)\n"
     "  0.00  = Strongly negative (explicit complaint or clear failure)\n\n"
-    "Output ONLY valid JSON with fields:\n"
-    "{ 'score': float, 'explanation': str, 'evidence': str }\n"
-    "- 'score' in [0.0, 1.0], rounded to two decimals.\n"
-    "- 'evidence' is a short quote (<= 12 words) copied verbatim from the review.\n"
-)
-
-USER_TEMPLATE = (
-    "Query: {query}\n"
-    "Aspect: {aspect}\n"
-    "Review text: {review}\n\n"
-    "Judge ONLY the given aspect. Return JSON."
+    "Provide performnace score, briefly explain your reasoning in plain text (1–2 sentences), and provide evidence excerpt from review."
+    "Return JSON: {score, explanation, evidence}\n"
 )
 
 LLM_SCORE_SCHEMA = {
     "name": "llm_score_schema",
     "schema": {
         "type": "object",
-        "additionalProperties": False,
-        "required": ["score", "explanation", "evidence"],
         "properties": {
             "score": {
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Normalized score in [0,1]."
+                "description": "Performance score of review on aspect, from 0.0 to 1.0."
             },
             "explanation": {
                 "type": "string",
-                "minLength": 4,
                 "maxLength": 300,
                 "description": "Brief rationale tied to the evidence."
             },
             "evidence": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 200,
                 "description": "Short verbatim quote from the review."
-            }
+            },
+        "required": ["score", "explanation", "evidence"],
+        "additionalProperties": False
         }
     }
 }
@@ -61,7 +50,7 @@ LLM_SCORE_SCHEMA = {
 def _llm_score_prompt(aspect, query, text):
     messages = [
         system_struct(SYSTEM_MESSAGE_score),
-        user_struct(USER_TEMPLATE.format(query=query, aspect=aspect, review=text))
+        user_struct(f"ASPECT: {aspect}\nQUERY: {query}\nREVIEW:\n{text}")
     ]
     return messages
 
