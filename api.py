@@ -1,5 +1,6 @@
 # api.py
 import io
+import sys
 import time
 import json
 import logging
@@ -209,6 +210,7 @@ def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1,
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")
                 result = ("{}", 0, 0) 
+                sys.exit(1)
 
             content, pt, ct = result
             return idx, content, pt, ct

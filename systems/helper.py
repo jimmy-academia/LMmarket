@@ -27,7 +27,7 @@ def _decompose_aspect(query):
     return output
 
 
-SYSTEM_MESSAGE = (
+SYSTEM_MESSAGE_INFO = (
     "You classify ONE aspect and propose synonym-based starter keywords for review retrieval.\n"
     "You will receive two user messages:\n"
     "  • First message: the full original query (context only)\n"
@@ -74,7 +74,7 @@ def _generate_aspect_info(aspect_list, query):
     messages_batch = []
     for aspect in aspect_list:
         messages_batch.append([
-            system_struct(SYSTEM_MESSAGE),
+            system_struct(SYSTEM_MESSAGE_INFO),
             user_struct(f"QUERY (context only): {query}"),
             user_struct(f"ASPECT to classify:\n{aspect}")
         ])
@@ -172,7 +172,7 @@ def _llm_judge_batch(aspect, aspect_type, query, batch_obj):
     results = [json.loads(raw) for raw in results]
     return results
 
-SYSTEM_MESSAGE = (
+SYSTEM_MESSAGE_score = (
     "You are a precise and impartial evaluator. "
     "Score how well a REVIEW TEXT supports one ASPECT of a multi-aspect user query. "
     "Use only explicit textual evidence (allow reasonable synonyms). "
@@ -210,7 +210,7 @@ LLM_SCORE_SCHEMA = {
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "multipleOf": 0.01,
+                "multipleOf": 0.1,
                 "description": "Normalized score in [0,1]."
             },
             "explanation": {
@@ -232,7 +232,7 @@ LLM_SCORE_SCHEMA = {
 
 def _llm_score_prompt(aspect, query, text):
     messages = [
-        system_struct(SYSTEM_MESSAGE),
+        system_struct(SYSTEM_MESSAGE_score),
         user_struct(USER_TEMPLATE.format(query=query, aspect=aspect, review=text))
     ]
     return messages
@@ -243,10 +243,10 @@ def _llm_score_batch(aspect, query, texts):
     for text in texts:
         messages = _llm_score_prompt(aspect, query, text)
         messages_list.append(messages)
-    results = batch_run_llm(messages_list, json_schema=LLM_SCORE_SCHEMA, verbose=True)
-    results = [json.loads(raw) for raw in results]
-    print(results)
-    from debug import check
-    check()
-    
+    raw_results = batch_run_llm(messages_list, json_schema=LLM_SCORE_SCHEMA, verbose=True)
+    results = [json.loads(raw) for raw in raw_results]
+    # for result in results:
+    #     if 'score' not in result:
+    #         from debug import check
+    #         check()
     return results

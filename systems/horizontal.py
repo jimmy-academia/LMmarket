@@ -22,12 +22,11 @@ class HorizontalMethod(BaseSystem):
             positive_sets.append(positives)
         
         candidates = set.intersection(*positive_sets)
-        logging.info(f"{aspect}, # candidates={len(candidates)}")
-
+        logging.info(f"# final candidates={len(candidates)}")
         scoreset = self.score(query, aspect_infos, candidates)
-        rankedset = self.rank(scoreset)
+        finallist = self.rank(scoreset)
         
-        return candidates
+        return finallist
             
     def handle_one_aspect(self, query, aspect_info):
         aspect = aspect_info['aspect']
@@ -36,7 +35,7 @@ class HorizontalMethod(BaseSystem):
         # --- phase 1 --- collect review to process ---
         ## todo: more sophisticated collection loops
         collected_reviews = self._collect_reviews(aspect)
-        positives = self._process_reviews(aspect, aspect_type, query, collected_reviews)
+        positives = self._identify_positives(aspect, aspect_type, query, collected_reviews)
         return positives
         
         # --- phase 2 todo --- brute force check remaining items ---
@@ -47,7 +46,7 @@ class HorizontalMethod(BaseSystem):
         collected = sorted(collected, key=lambda x: x[1], reverse=True)
         return collected
 
-    def _process_reviews(self, aspect, aspect_type, query, collected_reviews, batch_size=20, verbose=True):
+    def _identify_positives(self, aspect, aspect_type, query, collected_reviews, batch_size=20, verbose=True):
         '''
         LM operation on review persistent by self.review_cache
         item_set persistent by self.aspect_cache

@@ -22,7 +22,7 @@ def get_arguments():
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
     parser.add_argument('--openaiapi_key_ref', type=str, default='.openaiapi_key')
-    parser.add_argument('--city', type=str, default=None)
+    parser.add_argument('--city', type=str, default="saint louis")
     return parser.parse_args()
 
 def _resolve_args(args):
@@ -60,6 +60,8 @@ def main():
     system = build_system(args, data)
     # future, load and feed query_list
     ## obtains candidate set per query in self.query_aspect (aspect persistent in output_dir)
+
+    
     system.recommend(["Find a quiet, cozy cafe with comfortable seating."])
     # system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
     # system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])

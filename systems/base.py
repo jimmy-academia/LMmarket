@@ -21,7 +21,7 @@ class BaseSystem:
 
         self.aspect_info_cache = JSONCache(args.output_dir/"query_aspect_infos.json")
         city_tag = "_"+ args.city.replace(" ", "_") if args.city else "full"
-        self.candidate_cache = JSONCache(args.output_dir/f"{args.system}{city_tag}_query_candidates.json")
+        self.result_cache = JSONCache(args.output_dir/f"{args.system}{city_tag}_query_result.json")
 
         self.review_cache = InternalCache(args.cache_dir/f"full_review")
         self.aspect_cache = InternalCache(args.cache_dir/f"{city_tag}_aspect")
@@ -36,9 +36,9 @@ class BaseSystem:
         for query in query_list:
             aspect_infos = self.aspect_info_cache.get_or_build(query, self._build_aspect_infos, query)
 
-            candidates = self.candidate_cache.get_or_build(query, self.recommend_a_query, query, aspect_infos)
+            finallist = self.result_cache.get_or_build(query, self.recommend_a_query, query, aspect_infos)
 
-            self.score(query, aspect_infos, candidates)
+            logging.info(finallist)
 
     def recommend_a_query(self, query, aspect_infos):
         raise NotImplementedError
@@ -71,7 +71,7 @@ class BaseSystem:
                 
         results = _llm_score_batch(aspect, query, texts)
         for result, review_id in zip(results, review_id_list):
-            self.review_cache.get(review_id, f'{aspect}_score', result)
+            self.review_cache.set(review_id, f'{aspect}_score', result)
             scores.append(result['score'])
 
         # reorg split positive, negative
@@ -90,9 +90,9 @@ class BaseSystem:
         for candidate, all_scores in scoreset.items():
             avg_score = mean([mean(x[0]) if x[0] else 0 for x in all_scores]) 
             full_list.append((candidate, avg_score))
-        rankedset = [c for c, _ in sorted(full_list, key=lambda x: x[1], reverse=True)]
+        rankedlist = [c for c, _ in sorted(full_list, key=lambda x: x[1], reverse=True)]
 
-        return rankedset
+        return rankedlist
 
 
 
