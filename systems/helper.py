@@ -200,7 +200,6 @@ USER_TEMPLATE = (
 
 LLM_SCORE_SCHEMA = {
     "name": "llm_score_schema",
-    "strict": True,
     "schema": {
         "type": "object",
         "additionalProperties": False,
@@ -210,7 +209,6 @@ LLM_SCORE_SCHEMA = {
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "multipleOf": 0.1,
                 "description": "Normalized score in [0,1]."
             },
             "explanation": {
