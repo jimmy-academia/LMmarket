@@ -1,9 +1,6 @@
 # utils.py
-import os
-import re
-import json
-import pickle
-import argparse
+import os, re, argparse
+import json, pickle
 
 import torch
 import random
@@ -90,6 +87,7 @@ class InternalCache:
         self.root = _ensure_dir(root)
 
     def _path(self, key):
+        key = key.replace(" ", "_")
         return self.root / f"{key}.json"
 
     def get(self, key, tag=None, default=None):
