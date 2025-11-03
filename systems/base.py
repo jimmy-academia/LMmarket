@@ -3,7 +3,8 @@ from statistics import mean
 
 from utils import JSONCache, InternalCache
 from .searchable import Searchable, ItemSearchable
-from .helper import _decompose_aspect, _generate_aspect_info, _llm_score_batch
+from networks.aspect_handling import _decompose_aspect, _generate_aspect_info
+from networks.evaluator import _llm_score_batch
 
 class BaseSystem:
     '''
@@ -26,12 +27,6 @@ class BaseSystem:
         self.review_cache = InternalCache(args.cache_dir/f"full_review")
         self.aspect_cache = InternalCache(args.cache_dir/f"{city_tag}_aspect")
 
-    def _build_aspect_infos(self, query):
-        aspect_list = _decompose_aspect(query)
-        aspect_list = [t.strip() for t in aspect_list.split(',') if t.strip()]
-        aspect_info = _generate_aspect_info(aspect_list, query)
-        return aspect_info
-    
     def recommend(self, query_list):
         for query in query_list:
             aspect_infos = self.aspect_info_cache.get_or_build(query, self._build_aspect_infos, query)
@@ -43,6 +38,14 @@ class BaseSystem:
     def recommend_a_query(self, query, aspect_infos):
         raise NotImplementedError
 
+    # % --- aspect handeling ---
+    def _build_aspect_infos(self, query):
+        aspect_list = _decompose_aspect(query)
+        aspect_list = [t.strip() for t in aspect_list.split(',') if t.strip()]
+        aspect_info = _generate_aspect_info(aspect_list, query)
+        return aspect_info
+
+    # % --- item score ---
     def score(self, query, aspect_infos, candidates):
         scoreset = {}
         for candidate in candidates:
@@ -84,6 +87,7 @@ class BaseSystem:
 
         return dual_set_scores
 
+    # % --- item rank ---
     def rank(self, scoreset):
         logging.info('CAUSION: temporary ranking by average of positive set')
         full_list = []

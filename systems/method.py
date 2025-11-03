@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from .base import BaseSystem
-from .helper import _llm_judge_batch
+from networks.relevant_judge import _llm_judge_batch
 from tqdm import tqdm
 
 class MainMethod(BaseSystem):
@@ -12,7 +12,6 @@ class MainMethod(BaseSystem):
         super().__init__(args, data)
 
     def recommend_a_query(self, query, aspect_infos):
-        # aspect_ranked = self.aspect_info_cache.get_or_build(query, self._rank_aspects, f"RANKED_ASPECT_LIST:{query}")
         
         positive_sets = []
         for aspect_info in aspect_infos:
@@ -21,7 +20,14 @@ class MainMethod(BaseSystem):
             positives = self.handle_one_aspect(query, aspect_info)
             logging.info(f"{aspect}, # positives={len(positives)}")
             positive_sets.append(positives)
-
+        
+        candidates = set.intersection(*positive_sets)
+        logging.info(f"# final candidates={len(candidates)}")
+        scoreset = self.score(query, aspect_infos, candidates)
+        finallist = self.rank(scoreset)
+        
+        return finallist
+            
     def handle_one_aspect(self, query, aspect_info):
         aspect = aspect_info['aspect']
         aspect_type = aspect_info['aspect_type']
@@ -29,7 +35,7 @@ class MainMethod(BaseSystem):
         # --- phase 1 --- collect review to process ---
         ## todo: more sophisticated collection loops
         collected_reviews = self._collect_reviews(aspect)
-        positives = self._process_reviews(aspect, aspect_type, query, collected_reviews)
+        positives = self._identify_positives(aspect, aspect_type, query, collected_reviews)
         return positives
         
         # --- phase 2 todo --- brute force check remaining items ---
@@ -40,7 +46,7 @@ class MainMethod(BaseSystem):
         collected = sorted(collected, key=lambda x: x[1], reverse=True)
         return collected
 
-    def _process_reviews(self, aspect, aspect_type, query, collected_reviews, batch_size=20, verbose=True):
+    def _identify_positives(self, aspect, aspect_type, query, collected_reviews, batch_size=20, verbose=True):
         '''
         LM operation on review persistent by self.review_cache
         item_set persistent by self.aspect_cache
