@@ -1,6 +1,5 @@
 # api.py
 import io
-import sys
 import time
 import json
 import logging
@@ -16,6 +15,8 @@ from openai import AsyncOpenAI
 from pathlib import Path
 
 from utils import readf, dumpj 
+
+from debug import check
 
 logging.getLogger("openai").setLevel(logging.WARNING)
 
@@ -177,11 +178,12 @@ async def query_llm_async(messages, model=DEFAULT_MODEL, temperature=0.1, sem=No
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=4, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=5, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.
     """
+    num_workers = min(num_workers, len(prompts))
     if task_name is not None: logging.info(f'[batch_run_llm] global task name: {task_name}')
     async def _runner():
         sem = asyncio.Semaphore(num_workers)
@@ -209,8 +211,7 @@ def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1,
                 )
             except Exception as e:
                 logging.error(f"LLM query failed: {e}")
-                result = ("{}", 0, 0) 
-                sys.exit(1)
+                check()
 
             content, pt, ct = result
             return idx, content, pt, ct

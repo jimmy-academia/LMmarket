@@ -12,7 +12,14 @@ class MainMethod(BaseSystem):
         super().__init__(args, data)
 
     def recommend_a_query(self, query, aspect_infos):
+        logging.info(f'MAINMETHOD recommending query: {query}')
+        candidates = set(self.result_cache.get_or_build("candidate:"+query, self._find_candidates, query, aspect_infos))
+        scoreset = self.score(query, aspect_infos, candidates)
+        finallist = self.rank(scoreset)
         
+        return finallist
+
+    def _find_candidates(self, query, aspect_infos):
         positive_sets = []
         for aspect_info in aspect_infos:
             aspect = aspect_info['aspect']
@@ -24,12 +31,8 @@ class MainMethod(BaseSystem):
         candidates = set.intersection(*positive_sets)
         logging.info(f"# final candidates={len(candidates)}")
 
-        
-        scoreset = self.score(query, aspect_infos, candidates)
-        finallist = self.rank(scoreset)
-        
-        return finallist
-            
+        return list(candidates)
+
     def handle_one_aspect(self, query, aspect_info):
         aspect = aspect_info['aspect']
         aspect_type = aspect_info['aspect_type']

@@ -20,9 +20,9 @@ class BaseSystem:
         self.reviews = Searchable(data['reviews'])
         self.items = ItemSearchable(data['items'], self.reviews)
 
-        self.aspect_info_cache = JSONCache(args.output_dir/"query_aspect_infos.json")
+        self.aspect_info_cache = JSONCache(args.cache_dir/"query_aspect_infos.json")
         city_tag = "_"+ args.city.replace(" ", "_") if args.city else "full"
-        self.result_cache = JSONCache(args.output_dir/f"{args.system}{city_tag}_query_result.json")
+        self.result_cache = JSONCache(args.cache_dir/f"{args.system}{city_tag}_query_result.json")
 
         self.review_cache = InternalCache(args.cache_dir/f"full_review")
         self.aspect_cache = InternalCache(args.cache_dir/f"{city_tag}_aspect")
@@ -30,10 +30,9 @@ class BaseSystem:
     def recommend(self, query_list):
         for query in query_list:
             aspect_infos = self.aspect_info_cache.get_or_build(query, self._build_aspect_infos, query)
-
             finallist = self.result_cache.get_or_build(query, self.recommend_a_query, query, aspect_infos)
 
-            logging.info(finallist)
+            logging.info(f"final result: {finallist}")
 
     def recommend_a_query(self, query, aspect_infos):
         raise NotImplementedError
@@ -47,6 +46,7 @@ class BaseSystem:
 
     # % --- item score ---
     def score(self, query, aspect_infos, candidates):
+        logging.info('[base] scoring candidates')
         scoreset = {}
         for candidate in candidates:
             all_scores = []
@@ -62,17 +62,17 @@ class BaseSystem:
         retrieved = self.reviews.search(aspect, silent=True, item_id=candidate)
 
         review_id_list = []
-        texts = []
+        review_texts = []
         for obj in retrieved:
             review_id = obj['review_id']
             result = self.review_cache.get(review_id, f'{aspect}_score', False)
             if not result:
                 review_id_list.append(review_id)
-                texts.append(obj['text'])
+                review_texts.append(obj['text'])
             else:
                 scores.append(result['score']) 
                 
-        results = _llm_score_batch(aspect, query, texts)
+        results = _llm_score_batch(aspect, query, review_texts)
         for result, review_id in zip(results, review_id_list):
             self.review_cache.set(review_id, f'{aspect}_score', result)
             scores.append(result['score'])
@@ -89,6 +89,7 @@ class BaseSystem:
 
     # % --- item rank ---
     def rank(self, scoreset):
+        logging.info('[base] ranking by scoreset')
         logging.info('CAUSION: temporary ranking by average of positive set')
         full_list = []
         for candidate, all_scores in scoreset.items():

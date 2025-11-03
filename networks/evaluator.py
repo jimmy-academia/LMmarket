@@ -39,10 +39,10 @@ LLM_SCORE_SCHEMA = {
                 "type": "string",
                 "maxLength": 200,
                 "description": "Short verbatim quote from the review."
-            },
+            }
+        },
         "required": ["score", "explanation", "evidence"],
         "additionalProperties": False
-        }
     }
 }
 
@@ -55,9 +55,9 @@ def _llm_score_prompt(aspect, query, text):
     return messages
 
 
-def _llm_score_batch(aspect, query, texts):
+def _llm_score_batch(aspect, query, review_texts):
     messages_list = []
-    for text in texts:
+    for text in review_texts:
         messages = _llm_score_prompt(aspect, query, text)
         messages_list.append(messages)
     raw_results = batch_run_llm(messages_list, json_schema=LLM_SCORE_SCHEMA, verbose=True)

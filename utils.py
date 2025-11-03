@@ -72,6 +72,7 @@ class JSONCache:
         return key in self.data
 
     def get_or_build(self, key, builder, *args, **kwargs):
+        logging.info(f"[jsoncache] running get_or_build for key {key} => builder {builder.__name__}")
         if key in self.data:
             return self.data[key]
         value = builder(*args, **kwargs)
