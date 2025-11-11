@@ -124,17 +124,20 @@ class ASPECT_MATCH_Method(BaseSystem):
         a = a / max(np.linalg.norm(a), 1e-12)
 
         sims = M @ a  # (T,)
+        ranked = sorted(zip(tags, sims), key=lambda x: x[1], reverse=True)
 
-        K = 100
+        top_n = max(1, int(0.1 * len(ranked)))
+        ranked = ranked[:top_n]
         min_sim = 0.0
         positives = []
-        # best score per review = max over its tags’ similarity
-        best_by_review = {}  # rid -> (score, best_tag)
-        for tag, sim in zip(tags, sims):
+
+        for tag, sim in ranked:
             if sim < min_sim:
                 continue
             for rid in tag2reviews[tag]:
                 positives.append(rid2item_id[rid])
+
+        logging.info(f"{aspect}, # tags={top_n} | {[x[0] for x in ranked[:10]]}")
         return set(positives)
 
         
