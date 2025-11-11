@@ -1,5 +1,4 @@
 import json
-import logging
 from api import batch_run_llm, user_struct, system_struct
 
 SYSTEM_MESSAGE_score = (

@@ -15,7 +15,7 @@ def get_arguments():
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--dset', type=str, default='yelp')
-    parser.add_argument('--system', type=str, default='method')
+    parser.add_argument('--system', type=str, default='aspect_match')
     parser.add_argument('--cache_dir', type=str, default='cache')
     parser.add_argument('--logs_dir', type=str, default='cache/logs')
     parser.add_argument('--dset_root_ref', type=str, default='.dset_root')
@@ -39,6 +39,20 @@ def _resolve_args(args):
     args.device = torch.device(f"cuda:{args.device}" if args.device >= 0 and torch.cuda.is_available() else "cpu")
     return args 
 
+def downsize_cafe(data):
+    users = data['users']
+    items = data['items']
+    reviews = data['reviews']
+
+    from utils import loadj
+    cafe_list = loadj('cache/_saint_louis_aspect/cafe.json')['positives']
+    items = {k:v for k, v in items.items() if k in cafe_list}
+    reviews = {k:v for k, v in reviews.items() if v['item_id'] in items}
+    users = {k:v for k, v in users.items() if v['raw_info']['user_id'] in users}
+    return {"users": users, "items": items, "reviews": reviews}
+
+
+
 def main():
     args = get_arguments()
     args = _resolve_args(args)
@@ -49,7 +63,9 @@ def main():
         data = pick_city_data(data, args.city)
         logging.info(f"[main.py] downsizing to city: {args.city}")
         _num = lambda x: len(data[x].keys())
-        logging.info("[main.py] # users {} # items {} # reviews {}".format(*map(_num, ['users', 'items', 'reviews'])))
+        
+    data = downsize_cafe(data)
+    logging.info("[main.py] # users {} # items {} # reviews {}".format(*map(_num, ['users', 'items', 'reviews'])))
 
     dict2list = lambda _dict: list(_dict.values())
     data = {k: dict2list(v) for k, v in data.items()}

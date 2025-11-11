@@ -128,11 +128,11 @@ def query_llm(messages, model=DEFAULT_MODEL, temperature=0.1, verbose=False, jso
 
     messages = prep_msg(messages)
     kwargs = {"model": model, "messages": messages}
-    if use_json:
-        if json_schema:
-            kwargs["response_format"] = {"type": "json_schema", "json_schema": json_schema}
-        else:
-            kwargs["response_format"] = {"type": "json_object"}
+    if json_schema:
+        kwargs["response_format"] = {"type": "json_schema", "json_schema": json_schema}
+    elif use_json:
+        kwargs["response_format"] = {"type": "json_object"}
+        
     if not model.lower().startswith("gpt-5"):
         kwargs["temperature"] = temperature
 
@@ -178,7 +178,7 @@ async def query_llm_async(messages, model=DEFAULT_MODEL, temperature=0.1, sem=No
         return (content, pt, ct) if return_usage else content
 
 # ---- batch ----
-def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=5, verbose=False, json_schema=None, use_json=False):
+def batch_run_llm(prompts, task_name=None, model=DEFAULT_MODEL, temperature=0.1, num_workers=16, verbose=False, json_schema=None, use_json=False):
     """
     - When verbose=False: fast path, returns list[str] contents.
     - When verbose=True: shows tqdm progress bar and prints final totals; returns list[str] contents.

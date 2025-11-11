@@ -20,9 +20,9 @@ class BaseSystem:
         self.reviews = Searchable(data['reviews'])
         self.items = ItemSearchable(data['items'], self.reviews)
 
-        self.aspect_info_cache = JSONCache(args.cache_dir/"query_aspect_infos.json")
+        self.aspect_info_cache = JSONCache(args.cache_dir/"results/query_aspect_infos.json")
         city_tag = "_"+ args.city.replace(" ", "_") if args.city else "full"
-        self.result_cache = JSONCache(args.cache_dir/f"{args.system}{city_tag}_query_result.json")
+        self.result_cache = JSONCache(args.cache_dir/f"results/{args.system}{city_tag}_query_result.json")
 
         self.review_cache = InternalCache(args.cache_dir/f"full_review")
         self.aspect_cache = InternalCache(args.cache_dir/f"{city_tag}_aspect")
