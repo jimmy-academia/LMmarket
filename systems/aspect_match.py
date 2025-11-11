@@ -4,6 +4,7 @@ import logging
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
+from collections import defaultdict
 
 from api import embed_one, embed_many
 from utils import loadp, dumpp
@@ -60,18 +61,26 @@ class ASPECT_MATCH_Method(BaseSystem):
             logging.info(json.dumps(tags))
 
     def _embed_tags(self):
-        tag_set = set()
+        self.tag_set = set()
+        self.tag2reviews = defaultdict(list)
+        self.rid2item_id = {}
         for review in tqdm(self.reviews, ncols=88, desc='collect tags'):
             review_id = review['review_id']
-            tags = set(self.review_cache.get(review_id, "tags", set()))
-            tag_set |= tags
+            item_id = review['item_id']
+            self.rid2item_id[review_id] = item_id
+            features = self.review_cache.get(review_id, "tags", {}).get("tags")
+            if features:
+                tags = set([feat['name'] for feat in features])
+                for tag in tags:
+                    self.tag2reviews[tag].append(review_id)
+                self.tag_set |= tags
 
-        to_embed = [tag for tag in tag_set if tag not in self.tag_emb]
+        to_embed = [tag for tag in self.tag_set if tag not in self.tag_emb]
         if not to_embed:
             return 
 
         CHUNK = 1024
-        for i in range(0, len(to_embed), CHUNK):
+        for i in tqdm(range(0, len(to_embed), CHUNK), ncols=88, desc='batch embed tags'):
             batch = to_embed[i:i+CHUNK]
             emb_mat = embed_many(batch)        # shape (B, d) np.ndarray
             for tag, emb in zip(batch, emb_mat): # emb is 1-D np.ndarray
@@ -90,6 +99,8 @@ class ASPECT_MATCH_Method(BaseSystem):
         candidates = set.intersection(*positive_sets)
         logging.info(f"# final candidates={len(candidates)}")
 
+        input()
+
         return list(candidates)
 
     def handle_one_aspect(self, aspect):
@@ -99,20 +110,8 @@ class ASPECT_MATCH_Method(BaseSystem):
             dumpp(self.persist_path, self.tag_emb)
 
         a = self.tag_emb[aspect]
-        # rank by embedding similarity
-        rid2item_id = {}
-        tag2reviews = {}
-        for review in self.reviews:
-            rid = review["review_id"]
-            rid2item_id[rid] = review['item_id']
-            tags = self.review_cache.get(rid, "tags", [])
-            if not tags:
-                continue
-            for t in set(tags):
-                tag2reviews.setdefault(t, []).append(rid)
-
         # tags that actually appear in reviews AND have embeddings
-        tags = [t for t in tag2reviews.keys() if t in self.tag_emb]
+        tags = [t for t in self.tag2reviews.keys() if t in self.tag_emb]
         if not tags:
             logging.info(f"[handle_one_aspect] no tags available for aspect='{aspect}'")
             return set()
@@ -134,8 +133,8 @@ class ASPECT_MATCH_Method(BaseSystem):
         for tag, sim in ranked:
             if sim < min_sim:
                 continue
-            for rid in tag2reviews[tag]:
-                positives.append(rid2item_id[rid])
+            for rid in self.tag2reviews[tag]:
+                positives.append(self.rid2item_id[rid])
 
         logging.info(f"{aspect}, # tags={top_n} | {[x[0] for x in ranked[:10]]}")
         return set(positives)
