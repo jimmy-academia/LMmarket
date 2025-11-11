@@ -87,6 +87,11 @@ PRICING_PER_TOKEN = {
     "gpt-4o":       {"in": 5.00/1_000_000, "out": 15.00/1_000_000},
     "gpt-4o-mini":  {"in": 0.50/1_000_000, "out":  1.50/1_000_000},
     "gpt-4-turbo":  {"in": 10.00/1_000_000,"out": 30.00/1_000_000},
+
+    # Embedding
+    "text-embedding-3-small": {"in": 0.02/1_000_000, "out": 0.0},
+    "text-embedding-3-large": {"in": 0.13/1_000_000, "out": 0.0},
+
 }
 
 def _resolve_rates(model: str):
@@ -366,3 +371,53 @@ def use_batch_api_run(messages_list, model=DEFAULT_MODEL, temperature=0.1, verbo
 
     # Align to input order
     return [outputs.get(f"prompt-{i}") for i in range(len(messages_list))]
+
+
+
+def _l2_normalize(arr: np.ndarray, axis=-1, eps=1e-12) -> np.ndarray:
+    n = np.linalg.norm(arr, axis=axis, keepdims=True)
+    n = np.maximum(n, eps)
+    return arr / n
+
+def embed_one(text: str,
+              model: str = DEFAULT_EMBED_MODEL,
+              normalize: bool = True,
+              dimensions: int | None = None, #default 1536 (3-small), 3072 (3-large)
+              dtype=np.float32) -> np.ndarray:
+    """
+    Returns shape (d,)
+    """
+    client = get_openai_client()
+    kwargs = {"model": model, "input": text}
+    if dimensions is not None:
+        kwargs["dimensions"] = int(dimensions)
+
+    resp = client.embeddings.create(**kwargs)
+    # cost meter
+    record_usage(resp, model)
+
+    vec = np.asarray(resp.data[0].embedding, dtype=dtype)
+    return _l2_normalize(vec) if normalize else vec
+
+def embed_many(texts: list[str] | tuple[str, ...] | str,
+               model: str = DEFAULT_EMBED_MODEL,
+               normalize: bool = True,
+               dimensions: int | None = None,
+               dtype=np.float32) -> np.ndarray:
+    """
+    Accepts str or list[str]; returns array shape (N, d)
+    """
+    if not isinstance(texts, (list, tuple)):
+        texts = [texts]
+
+    client = get_openai_client()
+    kwargs = {"model": model, "input": [str(t) for t in texts]}
+    if dimensions is not None:
+        kwargs["dimensions"] = int(dimensions)
+
+    resp = client.embeddings.create(**kwargs)
+    record_usage(resp, model)
+
+    arr = np.asarray([d.embedding for d in resp.data], dtype=dtype)
+    return _l2_normalize(arr, axis=1) if normalize else arr
+
