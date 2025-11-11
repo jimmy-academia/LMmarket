@@ -9,6 +9,7 @@ import operator
 from threading import Lock
 from tqdm.asyncio import tqdm as tqdm_asyncio
 from types import SimpleNamespace
+import numpy as np
 
 import openai
 from openai import AsyncOpenAI
@@ -50,6 +51,7 @@ _COST_LOCK = Lock()
 _COST_TOTALS = {"pt": 0, "ct": 0, "usd": 0.0}
 
 DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_EMBED_MODEL = "text-embedding-3-small"
 
 def cost_now(_type="usd"):
     with _COST_LOCK:

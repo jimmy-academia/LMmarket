@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 
-from api import embed_many
+from api import embed_one, embed_many
 from utils import loadp, dumpp
 from networks.relevant_judge import _llm_judge_batch
 from networks.tagger import extract_tags_batch
@@ -92,14 +92,13 @@ class ASPECT_MATCH_Method(BaseSystem):
 
         return list(candidates)
 
-    def handle_one_aspect(aspect):
+    def handle_one_aspect(self, aspect):
         # use top aspect, or up to K = 20 reviews
         if aspect not in self.tag_emb:
-            self.tag_emb[aspect] = emb
+            self.tag_emb[aspect] = embed_one(aspect)
             dumpp(self.persist_path, self.tag_emb)
-        else:
-            emb = self.tag_emb[aspect]
 
+        a = self.tag_emb[aspect]
         # rank by embedding similarity
         rid2item_id = {}
         tag2reviews = {}
