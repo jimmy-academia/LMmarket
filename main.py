@@ -76,7 +76,8 @@ def main():
 
     
     # system.recommend(["Find a quiet, cozy cafe with comfortable seating."])
-    system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
+    system.recommend(["I want to read a book for a few hours."])
+    # system.recommend(["Find a quiet, cozy cafe with comfortable seating that's perfect for reading a book for a few hours."])
     # system.recommend(["Find a quiet, cozy cafe with comfortable seating and good natural light that's perfect for reading a book for a few hours."])
 
     # ranker(system)

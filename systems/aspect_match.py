@@ -89,17 +89,22 @@ class ASPECT_MATCH_Method(BaseSystem):
 
     def _find_candidates(self, query, aspect_infos):
         positive_sets = []
+        tags_list = []
+        positive_rsets = []
         for aspect_info in aspect_infos:
             aspect = aspect_info['aspect']
             logging.info(f"[recommend_a_query]->{aspect}")
-            positives = self.handle_one_aspect(aspect)
+            positives, pos_rs, tags = self.handle_one_aspect(aspect)
             logging.info(f"{aspect}, # positives={len(positives)}")
             positive_sets.append(positives)
-        
+            positive_rsets.append(pos_rs)
+            tags_list.append(tags)
+
         candidates = set.intersection(*positive_sets)
         logging.info(f"# final candidates={len(candidates)}")
 
-        input()
+        from debug import check
+        check()
 
         return list(candidates)
 
@@ -125,18 +130,24 @@ class ASPECT_MATCH_Method(BaseSystem):
         sims = M @ a  # (T,)
         ranked = sorted(zip(tags, sims), key=lambda x: x[1], reverse=True)
 
-        top_n = max(1, int(0.1 * len(ranked)))
+        top_n = max(1, int(0.01 * len(ranked)))
         ranked = ranked[:top_n]
         min_sim = 0.0
         positives = []
-
+        positive_rs = []
+        tags = []
         for tag, sim in ranked:
             if sim < min_sim:
                 continue
             for rid in self.tag2reviews[tag]:
+                positive_rs.append(rid)
                 positives.append(self.rid2item_id[rid])
+            tags.append(tag)
 
         logging.info(f"{aspect}, # tags={top_n} | {[x[0] for x in ranked[:10]]}")
-        return set(positives)
+        return set(positives), positive_rs, tags
 
         
+# for rid in positive_rsets[0]:
+#     print(self.reviews._id(rid))
+#     input('::pause::')

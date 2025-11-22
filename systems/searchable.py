@@ -11,9 +11,9 @@ class Searchable:
         self.texts = [review['text'] for review in self.reviews]
         self._tokens = [self._tok(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._tokens) if self._tokens else None
-
         self.length = len(self.texts)
-    
+        self.id2seq = {r["review_id"]: i for i, r in enumerate(reviews)}
+
     def __len__(self):
         return self.length
 
@@ -22,6 +22,9 @@ class Searchable:
 
     def __iter__(self):
         return iter(self.reviews)
+
+    def _id(self, review_id):
+        return self.reviews[self.id2seq[review_id]]
 
     def _tok(self, t):
         return re.findall(r"\w+", (t or "").lower())
